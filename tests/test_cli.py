@@ -460,6 +460,44 @@ def test_algorithms_and_images(fake_client: MagicMock, monkeypatch: pytest.Monke
     assert m.call_args.kwargs["repository_name"] == "repo/a"
     assert m.call_args.kwargs["source"] == "private"
 
+    with patch.object(cli.images_api, "share_image", return_value={"dry_run": True}) as m:
+        code, out = _run(
+            [
+                "images",
+                "share",
+                "--uuid",
+                "714",
+                "--source",
+                "z1120",
+                "--user-name",
+                "u1",
+            ],
+            fake_client,
+            monkeypatch,
+        )
+    assert code == 0 and out["dry_run"] is True
+    assert m.call_args.kwargs["submit"] is False
+
+    with patch.object(cli.images_api, "unshare_image", return_value={"ok": 1}) as m:
+        code, _ = _run(
+            [
+                "images",
+                "unshare",
+                "--uuid",
+                "714",
+                "--source",
+                "z1120",
+                "--user-name",
+                "u1,u2",
+                "--submit",
+            ],
+            fake_client,
+            monkeypatch,
+        )
+    assert code == 0
+    assert m.call_args.kwargs["submit"] is True
+    assert m.call_args.kwargs["user_names"] == "u1,u2"
+
 
 def test_config_error_returns_json(monkeypatch: pytest.MonkeyPatch) -> None:
     from nanhu.config import ConfigError

@@ -1,4 +1,4 @@
-"""镜像只读：镜像列表与版本列表。"""
+"""镜像：列表/版本 + 共享人增删（写操作默认 dry-run）。"""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from nanhu.client import NanhuClient
 
 IMAGES_PATH = "/api/open/dros-ic-platform/open-job/images"
 IMAGE_TAGS_PATH = "/api/open/dros-ic-platform/open-job/images/tags"
+IMAGE_SHARE_PATH = "/api/open/dros-ic-platform/open-job/images/share"
 
 
 def _bool_query(value: bool | str) -> str:
@@ -15,6 +16,22 @@ def _bool_query(value: bool | str) -> str:
     if isinstance(value, str):
         return value.lower()
     return "true" if value else "false"
+
+
+def _dry_run(
+    method: str,
+    path: str,
+    *,
+    query: dict[str, Any],
+    body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "dry_run": True,
+        "method": method.upper(),
+        "path": path,
+        "query": query,
+        "body": body,
+    }
 
 
 def list_images(
@@ -62,3 +79,42 @@ def list_image_tags(
         "pageSize": page_size,
     }
     return client.request("GET", IMAGE_TAGS_PATH, query=query)
+
+
+def share_image(
+    client: NanhuClient,
+    *,
+    uuid: str,
+    source: str,
+    user_name: str,
+    submit: bool = False,
+) -> dict[str, Any]:
+    """POST 添加镜像共享人（``.../images/share``）。Dry-run unless ``submit=True``."""
+    query = {"userId": client.user_id}
+    body = {"uuid": uuid, "source": source, "userName": user_name}
+    if not submit:
+        return _dry_run("POST", IMAGE_SHARE_PATH, query=query, body=body)
+    return client.request("POST", IMAGE_SHARE_PATH, query=query, body=body)
+
+
+def unshare_image(
+    client: NanhuClient,
+    *,
+    uuid: str,
+    source: str,
+    user_names: str | list[str],
+    submit: bool = False,
+) -> dict[str, Any]:
+    """DELETE 删除镜像共享人。Dry-run unless ``submit=True``.
+
+    Body uses ``userNameList`` (array); CLI may pass comma-separated names.
+    """
+    if isinstance(user_names, str):
+        names = [n.strip() for n in user_names.split(",") if n.strip()]
+    else:
+        names = [str(n) for n in user_names]
+    query = {"userId": client.user_id}
+    body = {"uuid": uuid, "source": source, "userNameList": names}
+    if not submit:
+        return _dry_run("DELETE", IMAGE_SHARE_PATH, query=query, body=body)
+    return client.request("DELETE", IMAGE_SHARE_PATH, query=query, body=body)

@@ -414,6 +414,26 @@ def _cmd_images_tags(client: NanhuClient, args: argparse.Namespace) -> Any:
     )
 
 
+def _cmd_images_share(client: NanhuClient, args: argparse.Namespace) -> Any:
+    return images_api.share_image(
+        client,
+        uuid=args.uuid,
+        source=args.source,
+        user_name=args.user_name,
+        submit=args.submit,
+    )
+
+
+def _cmd_images_unshare(client: NanhuClient, args: argparse.Namespace) -> Any:
+    return images_api.unshare_image(
+        client,
+        uuid=args.uuid,
+        source=args.source,
+        user_names=args.user_name,
+        submit=args.submit,
+    )
+
+
 # ---------------------------------------------------------------------------
 # parser
 # ---------------------------------------------------------------------------
@@ -685,7 +705,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(_handler=_cmd_algorithms_unshare)
 
     # --- images ---
-    img_p = sub.add_parser("images", help="image list/tags")
+    img_p = sub.add_parser("images", help="image list/tags/share")
     img_sub = img_p.add_subparsers(dest="action", required=True)
 
     p = img_sub.add_parser("list", help="list image repositories")
@@ -701,6 +721,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--current", type=int, default=1)
     p.add_argument("--page-size", type=int, default=100)
     p.set_defaults(_handler=_cmd_images_tags)
+
+    p = img_sub.add_parser("share", help="add image share user (dry-run unless --submit)")
+    p.add_argument("--uuid", required=True)
+    p.add_argument("--source", required=True)
+    p.add_argument("--user-name", required=True)
+    _add_submit_flag(p)
+    p.set_defaults(_handler=_cmd_images_share)
+
+    p = img_sub.add_parser("unshare", help="remove image share user(s) (dry-run unless --submit)")
+    p.add_argument("--uuid", required=True)
+    p.add_argument("--source", required=True)
+    p.add_argument("--user-name", required=True, help="comma-separated usernames")
+    _add_submit_flag(p)
+    p.set_defaults(_handler=_cmd_images_unshare)
 
     return parser
 

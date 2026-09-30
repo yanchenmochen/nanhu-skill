@@ -151,3 +151,53 @@ def test_list_image_tags_api_error() -> None:
         with pytest.raises(ApiError) as exc_info:
             images.list_image_tags(client, repository_name="x/y", source="z1120")
     assert exc_info.value.code == 404
+
+
+def test_share_image_dry_run_and_submit() -> None:
+    client = _client()
+    dry = images.share_image(client, uuid="714", source="z1120", user_name="002916")
+    assert dry["dry_run"] is True
+    assert dry["method"] == "POST"
+    assert dry["path"] == images.IMAGE_SHARE_PATH
+    assert dry["body"] == {"uuid": "714", "source": "z1120", "userName": "002916"}
+
+    calls: list[dict[str, Any]] = []
+
+    def handler(method: str, url: str, **kwargs: Any) -> HttpResponse:
+        calls.append({"method": method, "url": url, "body": kwargs.get("body")})
+        return _ok(None)
+
+    with patch("nanhu.auth.http_json", side_effect=_fake_http_factory(handler)), patch(
+        "nanhu.http.http_json", side_effect=_fake_http_factory(handler)
+    ):
+        images.share_image(
+            client, uuid="714", source="z1120", user_name="002916", submit=True
+        )
+
+    assert calls[0]["method"] == "POST"
+    assert images.IMAGE_SHARE_PATH in calls[0]["url"]
+    assert calls[0]["body"]["userName"] == "002916"
+
+
+def test_unshare_image_dry_run_and_submit() -> None:
+    client = _client()
+    dry = images.unshare_image(client, uuid="714", source="z1120", user_names="a,b")
+    assert dry["dry_run"] is True
+    assert dry["method"] == "DELETE"
+    assert dry["body"]["userNameList"] == ["a", "b"]
+
+    calls: list[dict[str, Any]] = []
+
+    def handler(method: str, url: str, **kwargs: Any) -> HttpResponse:
+        calls.append({"method": method, "body": kwargs.get("body")})
+        return _ok(True)
+
+    with patch("nanhu.auth.http_json", side_effect=_fake_http_factory(handler)), patch(
+        "nanhu.http.http_json", side_effect=_fake_http_factory(handler)
+    ):
+        images.unshare_image(
+            client, uuid="714", source="z1120", user_names=["a", "b"], submit=True
+        )
+
+    assert calls[0]["method"] == "DELETE"
+    assert calls[0]["body"]["userNameList"] == ["a", "b"]
