@@ -409,6 +409,35 @@ def test_algorithms_and_images(fake_client: MagicMock, monkeypatch: pytest.Monke
     assert code == 0
     assert m.call_args.kwargs["is_public"] is True
 
+    with patch.object(
+        cli.algorithms_api, "create_algorithm_from_config", return_value={"dry_run": True}
+    ) as m:
+        code, out = _run(
+            ["algorithms", "create", "--config", "/tmp/a.yaml"],
+            fake_client,
+            monkeypatch,
+        )
+    assert code == 0 and out["dry_run"] is True
+    assert m.call_args.kwargs["submit"] is False
+
+    with patch.object(cli.algorithms_api, "publish_algorithm", return_value={"ok": 1}) as m:
+        code, _ = _run(
+            ["algorithms", "publish", "--uuid", "u1", "--submit"],
+            fake_client,
+            monkeypatch,
+        )
+    assert code == 0
+    assert m.call_args.kwargs["submit"] is True
+
+    with patch.object(cli.algorithms_api, "share_algorithm", return_value={"ok": 1}) as m:
+        code, _ = _run(
+            ["algorithms", "share", "--uuid", "u1", "--user-name", "001", "--submit"],
+            fake_client,
+            monkeypatch,
+        )
+    assert code == 0
+    assert m.call_args.args[2] == "001"
+
     with patch.object(cli.images_api, "list_images", return_value={"i": 1}) as m:
         code, _ = _run(["images", "list", "--is-public", "false"], fake_client, monkeypatch)
     assert code == 0

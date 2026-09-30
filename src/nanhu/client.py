@@ -100,10 +100,10 @@ class NanhuClient:
             path = "/" + path
         url = f"{base}{path}"
         if query:
-            # Drop None values; stringify the rest.
+            # Drop None values; stringify the rest. Lists use doseq (e.g. shareList).
             items = {k: v for k, v in query.items() if v is not None}
             if items:
-                url = f"{url}?{urlencode(items)}"
+                url = f"{url}?{urlencode(items, doseq=True)}"
         return url
 
     def request(

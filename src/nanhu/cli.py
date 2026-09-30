@@ -358,6 +358,42 @@ def _cmd_algorithms_get(client: NanhuClient, args: argparse.Namespace) -> Any:
     )
 
 
+def _cmd_algorithms_create(client: NanhuClient, args: argparse.Namespace) -> Any:
+    return algorithms_api.create_algorithm_from_config(
+        client, args.config, submit=args.submit
+    )
+
+
+def _cmd_algorithms_update(client: NanhuClient, args: argparse.Namespace) -> Any:
+    return algorithms_api.update_algorithm_from_config(
+        client, args.config, uuid=args.uuid, submit=args.submit
+    )
+
+
+def _cmd_algorithms_delete(client: NanhuClient, args: argparse.Namespace) -> Any:
+    return algorithms_api.delete_algorithm(client, args.uuid, submit=args.submit)
+
+
+def _cmd_algorithms_publish(client: NanhuClient, args: argparse.Namespace) -> Any:
+    return algorithms_api.publish_algorithm(client, args.uuid, submit=args.submit)
+
+
+def _cmd_algorithms_unpublish(client: NanhuClient, args: argparse.Namespace) -> Any:
+    return algorithms_api.unpublish_algorithm(client, args.uuid, submit=args.submit)
+
+
+def _cmd_algorithms_share(client: NanhuClient, args: argparse.Namespace) -> Any:
+    return algorithms_api.share_algorithm(
+        client, args.uuid, args.user_name, submit=args.submit
+    )
+
+
+def _cmd_algorithms_unshare(client: NanhuClient, args: argparse.Namespace) -> Any:
+    return algorithms_api.unshare_algorithm(
+        client, args.uuid, args.user_name, submit=args.submit
+    )
+
+
 def _cmd_images_list(client: NanhuClient, args: argparse.Namespace) -> Any:
     return images_api.list_images(
         client,
@@ -594,7 +630,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(_handler=_cmd_resources_promotions)
 
     # --- algorithms ---
-    algo_p = sub.add_parser("algorithms", help="algorithm list/detail")
+    algo_p = sub.add_parser("algorithms", help="algorithm list/detail/CRUD/share")
     algo_sub = algo_p.add_subparsers(dest="action", required=True)
 
     p = algo_sub.add_parser("list", help="list algorithms")
@@ -609,6 +645,44 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--uuid", required=True)
     p.add_argument("--is-public", type=_parse_bool, required=True)
     p.set_defaults(_handler=_cmd_algorithms_get)
+
+    p = algo_sub.add_parser("create", help="create algorithm from YAML (dry-run unless --submit)")
+    p.add_argument("--config", type=Path, required=True)
+    _add_submit_flag(p)
+    p.set_defaults(_handler=_cmd_algorithms_create)
+
+    p = algo_sub.add_parser("update", help="update algorithm from YAML (dry-run unless --submit)")
+    p.add_argument("--config", type=Path, required=True)
+    p.add_argument("--uuid", default=None, help="override uuid in config")
+    _add_submit_flag(p)
+    p.set_defaults(_handler=_cmd_algorithms_update)
+
+    p = algo_sub.add_parser("delete", help="delete algorithm (dry-run unless --submit)")
+    p.add_argument("--uuid", required=True)
+    _add_submit_flag(p)
+    p.set_defaults(_handler=_cmd_algorithms_delete)
+
+    p = algo_sub.add_parser("publish", help="make algorithm public (dry-run unless --submit)")
+    p.add_argument("--uuid", required=True)
+    _add_submit_flag(p)
+    p.set_defaults(_handler=_cmd_algorithms_publish)
+
+    p = algo_sub.add_parser("unpublish", help="cancel public share (dry-run unless --submit)")
+    p.add_argument("--uuid", required=True)
+    _add_submit_flag(p)
+    p.set_defaults(_handler=_cmd_algorithms_unpublish)
+
+    p = algo_sub.add_parser("share", help="add share user (dry-run unless --submit)")
+    p.add_argument("--uuid", required=True)
+    p.add_argument("--user-name", required=True, help="target username e.g. 001254")
+    _add_submit_flag(p)
+    p.set_defaults(_handler=_cmd_algorithms_share)
+
+    p = algo_sub.add_parser("unshare", help="remove share user(s) (dry-run unless --submit)")
+    p.add_argument("--uuid", required=True)
+    p.add_argument("--user-name", required=True, help="comma-separated usernames")
+    _add_submit_flag(p)
+    p.set_defaults(_handler=_cmd_algorithms_unshare)
 
     # --- images ---
     img_p = sub.add_parser("images", help="image list/tags")
