@@ -152,6 +152,27 @@ def _cmd_jobs_create_deploy(client: NanhuClient, args: argparse.Namespace) -> An
     )
 
 
+def _cmd_jobs_restart_deploy(client: NanhuClient, args: argparse.Namespace) -> Any:
+    return jobs_api.restart_inference_from_config(
+        client,
+        args.config,
+        uuid=args.uuid,
+        name=args.name,
+        worker_num=args.worker_num,
+        biz_type=args.biz_type,
+        submit=args.submit,
+    )
+
+
+def _cmd_jobs_restart_pod(client: NanhuClient, args: argparse.Namespace) -> Any:
+    return jobs_api.restart_failed_pods(
+        client,
+        args.job_id,
+        args.pod_names,
+        submit=args.submit,
+    )
+
+
 # ---------------------------------------------------------------------------
 # devenv
 # ---------------------------------------------------------------------------
@@ -417,6 +438,27 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--biz-type", default="DROS")
     _add_submit_flag(p)
     p.set_defaults(_handler=_cmd_jobs_create_deploy)
+
+    p = jobs_sub.add_parser(
+        "restart-deploy",
+        help="restart deploy with new params (restartInferenceJob; dry-run unless --submit)",
+    )
+    p.add_argument("--config", type=Path, required=True)
+    p.add_argument("--uuid", default=None, help="job uuid override (or set uuid in config)")
+    p.add_argument("--name", default=None)
+    p.add_argument("--worker-num", type=int, default=None)
+    p.add_argument("--biz-type", default="DROS")
+    _add_submit_flag(p)
+    p.set_defaults(_handler=_cmd_jobs_restart_deploy)
+
+    p = jobs_sub.add_parser(
+        "restart-pod",
+        help="restart failed deploy POD(s) (podRestart; dry-run unless --submit)",
+    )
+    p.add_argument("--job-id", required=True)
+    p.add_argument("--pod-names", required=True, help="comma-separated failed pod names")
+    _add_submit_flag(p)
+    p.set_defaults(_handler=_cmd_jobs_restart_pod)
 
     # --- devenv ---
     devenv_p = sub.add_parser("devenv", help="JUPYTER development environments")

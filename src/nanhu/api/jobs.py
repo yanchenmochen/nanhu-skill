@@ -26,6 +26,8 @@ PATH_JOB_LIST_ALL = "/api/open/dros-ic-platform/open-job/jobListAll"
 PATH_JOB_DETAIL = "/api/open/dros-ic-platform/open-job/getJobDetail"
 PATH_STOP = "/api/open/dros-ic-platform/open-job/stop"
 PATH_RESTART = "/api/open/dros-ic-platform/open-job/restart"
+PATH_RESTART_INFERENCE = "/api/open/dros-ic-platform/open-job/restartInferenceJob"
+PATH_POD_RESTART = "/api/open/dros-ic-platform/open-job/podRestart"
 PATH_CREATE_TRAIN_V2 = "/api/open/dros-ic-platform/open-job/create"
 PATH_CREATE_TRAIN_V3 = "/api/open/dros-ic-platform/open-job/v3/create"
 PATH_CREATE_DEPLOY_V2 = "/api/open/dros-ic-platform/open-job/createInferenceJob"
@@ -489,6 +491,78 @@ class JobsApi:
             return _dry_run("POST", PATH_RESTART, query=query)
         return self.client.request("POST", PATH_RESTART, query=query)
 
+    def restart_inference_job(
+        self,
+        body: dict[str, Any],
+        *,
+        biz_type: str | None = DEFAULT_BIZ_TYPE,
+        user_extra_info: str | None = None,
+        submit: bool = False,
+    ) -> dict[str, Any]:
+        """POST 变配重启部署作业（``restartInferenceJob``），保持 jobId 不变。
+
+        Body 需含 ``uuid``（待重启作业 id）及与创建部署类似的字段。
+        Dry-run unless ``submit=True``.
+        """
+        if not body.get("uuid"):
+            raise ValueError("restartInferenceJob body requires uuid")
+        query = _user_query(
+            self.client,
+            biz_type=biz_type if biz_type is not None else DEFAULT_BIZ_TYPE,
+            userExtraInfo=user_extra_info,
+        )
+        if not submit:
+            return _dry_run("POST", PATH_RESTART_INFERENCE, query=query, body=body)
+        return self.client.request("POST", PATH_RESTART_INFERENCE, query=query, body=body)
+
+    def restart_inference_from_config(
+        self,
+        cfg: dict[str, Any] | str | Path,
+        *,
+        uuid: str | None = None,
+        name: str | None = None,
+        worker_num: int | None = None,
+        extra_env: dict[str, str] | None = None,
+        biz_type: str | None = DEFAULT_BIZ_TYPE,
+        submit: bool = False,
+    ) -> dict[str, Any]:
+        """Load/build deploy-like payload then ``restart_inference_job`` (dry-run by default)."""
+        if isinstance(cfg, (str, Path)):
+            cfg = load_job_config(cfg)
+        body = build_deploy_payload(cfg, name=name, worker_num=worker_num, extra_env=extra_env)
+        job_uuid = uuid or cfg.get("uuid") or body.get("uuid")
+        if not job_uuid:
+            raise ValueError("restart-deploy requires uuid= or cfg['uuid']")
+        body["uuid"] = str(job_uuid)
+        resolved_biz = biz_type
+        if biz_type is DEFAULT_BIZ_TYPE and cfg.get("biz_type"):
+            resolved_biz = str(cfg["biz_type"])
+        return self.restart_inference_job(body, biz_type=resolved_biz, submit=submit)
+
+    def restart_failed_pods(
+        self,
+        job_id: str,
+        job_pod_names: str | list[str],
+        *,
+        submit: bool = False,
+    ) -> dict[str, Any]:
+        """POST 重启失败 POD（``podRestart``）。Dry-run unless ``submit=True``.
+
+        Body carries ``userId`` / ``jobId`` / ``jobPodNames`` (comma-separated).
+        """
+        if isinstance(job_pod_names, (list, tuple)):
+            pods = ",".join(str(n) for n in job_pod_names)
+        else:
+            pods = str(job_pod_names)
+        body: dict[str, Any] = {
+            "userId": self.client.user_id,
+            "jobId": job_id,
+            "jobPodNames": pods,
+        }
+        if not submit:
+            return _dry_run("POST", PATH_POD_RESTART, query={}, body=body)
+        return self.client.request("POST", PATH_POD_RESTART, body=body)
+
     def create_train(
         self,
         body: dict[str, Any],
@@ -636,6 +710,24 @@ def stop_job(client: NanhuClient, job_id: str, **kwargs: Any) -> dict[str, Any]:
 
 def restart_job(client: NanhuClient, job_id: str, **kwargs: Any) -> dict[str, Any]:
     return JobsApi(client).restart_job(job_id, **kwargs)
+
+
+def restart_inference_job(
+    client: NanhuClient, body: dict[str, Any], **kwargs: Any
+) -> dict[str, Any]:
+    return JobsApi(client).restart_inference_job(body, **kwargs)
+
+
+def restart_inference_from_config(
+    client: NanhuClient, cfg: dict[str, Any] | str | Path, **kwargs: Any
+) -> dict[str, Any]:
+    return JobsApi(client).restart_inference_from_config(cfg, **kwargs)
+
+
+def restart_failed_pods(
+    client: NanhuClient, job_id: str, job_pod_names: str | list[str], **kwargs: Any
+) -> dict[str, Any]:
+    return JobsApi(client).restart_failed_pods(job_id, job_pod_names, **kwargs)
 
 
 def create_train(client: NanhuClient, body: dict[str, Any], **kwargs: Any) -> dict[str, Any]:

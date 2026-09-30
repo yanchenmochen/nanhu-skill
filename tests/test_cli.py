@@ -98,6 +98,37 @@ def test_jobs_restart_submit(fake_client: MagicMock, monkeypatch: pytest.MonkeyP
     assert m.call_args.kwargs["submit"] is True
 
 
+def test_jobs_restart_deploy_dry_run(
+    fake_client: MagicMock, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    cfg = tmp_path / "d.yaml"
+    cfg.write_text("uuid: u1\nname: d\n", encoding="utf-8")
+    dry = {"dry_run": True, "path": "/restartInferenceJob"}
+    with patch.object(cli.jobs_api, "restart_inference_from_config", return_value=dry) as m:
+        code, out = _run(
+            ["jobs", "restart-deploy", "--config", str(cfg)],
+            fake_client,
+            monkeypatch,
+        )
+    assert code == 0
+    assert out["dry_run"] is True
+    assert m.call_args.kwargs["submit"] is False
+    assert m.call_args.kwargs["uuid"] is None
+
+
+def test_jobs_restart_pod_submit(fake_client: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+    with patch.object(cli.jobs_api, "restart_failed_pods", return_value={"code": 0}) as m:
+        code, _ = _run(
+            ["jobs", "restart-pod", "--job-id", "j1", "--pod-names", "a,b", "--submit"],
+            fake_client,
+            monkeypatch,
+        )
+    assert code == 0
+    assert m.call_args.kwargs["submit"] is True
+    assert m.call_args.args[1] == "j1"
+    assert m.call_args.args[2] == "a,b"
+
+
 def test_jobs_create_train_dry_run(
     fake_client: MagicMock, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
