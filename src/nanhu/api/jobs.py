@@ -1,5 +1,6 @@
-"""Jobs OpenAPI: list / detail (Wave1 F4).
+"""Jobs OpenAPI: list / detail / stop / restart (Wave1 F4–F5).
 
+Write paths default to dry-run unless ``submit=True``.
 ``userId`` always comes from ``client.user_id``; ``accessToken`` via ``client.request``.
 """
 
@@ -16,6 +17,8 @@ DEFAULT_BIZ_TYPE = "DROS"
 PATH_JOB_LIST = "/api/open/dros-ic-platform/open-job/jobList"
 PATH_JOB_LIST_ALL = "/api/open/dros-ic-platform/open-job/jobListAll"
 PATH_JOB_DETAIL = "/api/open/dros-ic-platform/open-job/getJobDetail"
+PATH_STOP = "/api/open/dros-ic-platform/open-job/stop"
+PATH_RESTART = "/api/open/dros-ic-platform/open-job/restart"
 
 
 def _drop_none(d: dict[str, Any]) -> dict[str, Any]:
@@ -33,6 +36,22 @@ def _user_query(
         q["bizType"] = biz_type
     q.update(_drop_none(extra))
     return q
+
+
+def _dry_run(
+    method: str,
+    path: str,
+    *,
+    query: dict[str, Any],
+    body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "dry_run": True,
+        "method": method.upper(),
+        "path": path,
+        "query": query,
+        "body": body,
+    }
 
 
 class JobsApi:
@@ -106,6 +125,32 @@ class JobsApi:
         )
         return self.client.request("GET", PATH_JOB_LIST_ALL, query=query)
 
+    def stop_job(
+        self,
+        job_id: str,
+        *,
+        biz_type: str = DEFAULT_BIZ_TYPE,
+        submit: bool = False,
+    ) -> dict[str, Any]:
+        """PUT stop job. Dry-run unless ``submit=True``."""
+        query = _user_query(self.client, biz_type=biz_type, jobId=job_id)
+        if not submit:
+            return _dry_run("PUT", PATH_STOP, query=query)
+        return self.client.request("PUT", PATH_STOP, query=query)
+
+    def restart_job(
+        self,
+        job_id: str,
+        *,
+        biz_type: str = DEFAULT_BIZ_TYPE,
+        submit: bool = False,
+    ) -> dict[str, Any]:
+        """POST restart job (不变配). Dry-run unless ``submit=True``."""
+        query = _user_query(self.client, biz_type=biz_type, jobId=job_id)
+        if not submit:
+            return _dry_run("POST", PATH_RESTART, query=query)
+        return self.client.request("POST", PATH_RESTART, query=query)
+
 
 def list_jobs(client: NanhuClient, job_type: str, **kwargs: Any) -> dict[str, Any]:
     return JobsApi(client).list_jobs(job_type, **kwargs)
@@ -125,3 +170,11 @@ def get_job_detail(client: NanhuClient, job_id: str, **kwargs: Any) -> dict[str,
 
 def list_jobs_all(client: NanhuClient, **kwargs: Any) -> dict[str, Any]:
     return JobsApi(client).list_jobs_all(**kwargs)
+
+
+def stop_job(client: NanhuClient, job_id: str, **kwargs: Any) -> dict[str, Any]:
+    return JobsApi(client).stop_job(job_id, **kwargs)
+
+
+def restart_job(client: NanhuClient, job_id: str, **kwargs: Any) -> dict[str, Any]:
+    return JobsApi(client).restart_job(job_id, **kwargs)
