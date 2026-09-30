@@ -1,0 +1,6 @@
+# Nanhu control-plane clusters (Wave0: wuxi + x10000 only).
+clusters:
+  wuxi:
+    api_base: http://10.124.120.108:38080
+  x10000:
+    api_base: http://10.202.32.189:38080
