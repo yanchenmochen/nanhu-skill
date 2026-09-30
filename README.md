@@ -1,4 +1,4 @@
-# nanhu-skill
+# nanhu-skill / nanhu-cli
 
 南湖（Nanhu）OpenAPI 的独立 Python CLI 客户端与 Cursor Skill。
 
@@ -14,7 +14,7 @@ cd /path/to/nanhu-skill
 pip install -e ".[dev]"
 ```
 
-安装后提供控制台命令 `nanhu`（见 `pyproject.toml` entry point）。
+安装后提供两个等价控制台命令：`nanhu` 与 `nanhu-cli`（见 `pyproject.toml` entry points）。
 
 ## 凭据
 
@@ -35,25 +35,26 @@ cp config/credentials.env.example config/credentials.env
 
 ## Cursor Skill 安装
 
-把本仓库 symlink 到 Cursor skills 目录：
+把本仓库 symlink 到 Cursor skills 目录（双入口，同一仓库）：
 
 ```bash
 mkdir -p ~/.cursor/skills
 ln -sfn "$(pwd)" ~/.cursor/skills/nanhu-skill
+ln -sfn "$(pwd)" ~/.cursor/skills/nanhu-cli
 ```
 
-文档入口：`SKILL.md`；细节见 `references/`。
+`/nanhu-skill` 与 `/nanhu-cli` 均加载 `SKILL.md`。细节见 `references/`。
 
 ## CLI 快速示例
 
 ```bash
-# 默认 dry-run；stdout 为 JSON
+# 默认 dry-run；stdout 为 JSON；nanhu 与 nanhu-cli 等价
 nanhu --cluster wuxi jobs list --job-type AI_TRAIN
-nanhu --cluster wuxi jobs create-train --config examples/train_job.yaml
+nanhu-cli --cluster wuxi jobs create-train --config examples/train_job.yaml
 nanhu --cluster wuxi jobs create-train --config examples/train_job.yaml --submit
 
 nanhu --cluster x10000 pods list --job-id <id> --version v3
-nanhu --cluster x10000 logs get --job-id <id> --pod-names <pod>
+nanhu-cli --cluster x10000 logs get --job-id <id> --pod-names <pod>
 ```
 
 命令全集见 `SKILL.md`。

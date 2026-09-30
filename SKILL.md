@@ -1,24 +1,25 @@
 ---
 name: nanhu-skill
 description: >-
-  通过 nanhu CLI 操作南湖（Nanhu）调度：查询/创建/停止训练与部署作业、开发环境、
+  通过 nanhu / nanhu-cli 操作南湖（Nanhu）调度：查询/创建/停止训练与部署作业、开发环境、
   POD/日志、规格与项目、算法与镜像。集群仅 wuxi / x10000。在用户提到南湖、
-  Nanhu、无锡集群、x10000、提交训练作业、查 job 状态/日志时使用。
+  Nanhu、nanhu-cli、/nanhu-cli、南湖 CLI、无锡集群、x10000、提交训练作业、查 job 状态/日志时使用。
 ---
 
-# 南湖调度助手（nanhu-skill）
+# 南湖调度助手（nanhu-skill / nanhu-cli）
 
-用 **`nanhu` CLI** 调用南湖 OpenAPI。写操作默认 dry-run；加 `--submit` 才真正执行。
+用 **`nanhu` 或 `nanhu-cli` CLI**（二者等价）调用南湖 OpenAPI。写操作默认 dry-run；加 `--submit` 才真正执行。
 stdout 为 JSON，便于解析。
 
 ## 何时使用
 
-- 查/建/停/重启训练或部署作业
+- 查/建/停/重启训练或部署作业（含变配重启、失败 POD 重启）
 - 开发环境 CRUD、保存镜像
-- 查 POD、资源监控、任务日志
-- 查计算规格、项目/子项目、算法、镜像（创建作业前置）
+- 查 POD、资源监控、任务日志（含时间窗口预统计）
+- 查计算规格、项目/子项目、弹性填充价格、算法、镜像（创建作业前置）
+- 算法写操作与共享、镜像共享人、海纳私有数据集 PVC
 
-不要用本 skill 处理海纳数据集 PVC、WebSocket 实时日志、非 wuxi/x10000 集群。
+不要用本 skill 处理 WebSocket 实时日志、非 wuxi/x10000 集群。部分接口在 wuxi 上可能 404（见 `references/pitfalls.md`）。
 
 ## 前置条件
 
@@ -30,12 +31,15 @@ cp config/credentials.env.example config/credentials.env
 # 可选按集群：config/credentials.wuxi.env / credentials.x10000.env
 ```
 
-Cursor Skill 安装（symlink）：
+Cursor Skill 安装（symlink 双入口，指向同一仓库）：
 
 ```bash
 mkdir -p ~/.cursor/skills
 ln -sfn /path/to/nanhu-skill ~/.cursor/skills/nanhu-skill
+ln -sfn /path/to/nanhu-skill ~/.cursor/skills/nanhu-cli
 ```
+
+`/nanhu-skill` 与 `/nanhu-cli` 加载同一份本文件。
 
 ## 全局参数
 
@@ -50,13 +54,15 @@ ln -sfn /path/to/nanhu-skill ~/.cursor/skills/nanhu-skill
 ## 命令速查
 
 ```bash
-# 作业
+# 作业（nanhu / nanhu-cli 等价）
 nanhu --cluster wuxi jobs list --job-type AI_TRAIN
 nanhu --cluster wuxi jobs detail --job-id <id>
 nanhu --cluster wuxi jobs list-all
 nanhu --cluster wuxi jobs stop --job-id <id>              # dry-run
 nanhu --cluster wuxi jobs stop --job-id <id> --submit
 nanhu --cluster wuxi jobs restart --job-id <id> --submit
+nanhu --cluster wuxi jobs restart-deploy --config deploy.yaml   # 变配，dry-run
+nanhu --cluster wuxi jobs restart-pod --job-id <id> --pod-names a,b --submit
 nanhu --cluster wuxi jobs create-train --config examples/train_job.yaml
 nanhu --cluster wuxi jobs create-train --config job.yaml --submit
 nanhu --cluster wuxi jobs create-deploy --config deploy.yaml --version v3
@@ -78,15 +84,31 @@ nanhu --cluster wuxi pods monitor --job-id <id> --pod-names p0 --start <ts> --en
 nanhu --cluster x10000 logs get --job-id <id> --pod-names <pod>
 nanhu --cluster wuxi logs get --job-id <id> --pod-names <pod> --zone <ZONE>
 nanhu --cluster wuxi logs download --job-id <id> --pod-names <pod> -o /tmp/job.log
+nanhu --cluster wuxi logs prefetch --job-id <id> --pod-names <pod>
 
 # 资源 / 算法 / 镜像
 nanhu --cluster wuxi resources specs
 nanhu --cluster wuxi resources projects
 nanhu --cluster wuxi resources sub-projects --project-id <id>
+nanhu --cluster wuxi resources promotions --project-id <id>
 nanhu --cluster wuxi algorithms list --is-public false
 nanhu --cluster wuxi algorithms get --uuid <uuid> --is-public false
+nanhu --cluster wuxi algorithms create --config algo.yaml
+nanhu --cluster wuxi algorithms update --config algo.yaml
+nanhu --cluster wuxi algorithms delete --uuid <uuid>
+nanhu --cluster wuxi algorithms publish --uuid <uuid>
+nanhu --cluster wuxi algorithms unpublish --uuid <uuid>
+nanhu --cluster wuxi algorithms share --uuid <uuid> --user-name <u>
+nanhu --cluster wuxi algorithms unshare --uuid <uuid> --user-name <u>
 nanhu --cluster wuxi images list --is-public false
 nanhu --cluster wuxi images tags --repository-name <name> --source <source>
+nanhu --cluster wuxi images share --uuid <id> --source <s> --user-name <u>
+nanhu --cluster wuxi images unshare --uuid <id> --source <s> --user-name <u>
+
+# 海纳数据集 PVC（写操作默认 dry-run）
+nanhu --cluster wuxi seahold list
+nanhu --cluster wuxi seahold create --config seahold.yaml
+nanhu --cluster wuxi seahold destroy --uuid <uuid>
 ```
 
 ## Agent 工作流（推荐）

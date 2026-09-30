@@ -21,6 +21,7 @@ dev = [
 
 [project.scripts]
 nanhu = "nanhu.cli:main"
+nanhu-cli = "nanhu.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
