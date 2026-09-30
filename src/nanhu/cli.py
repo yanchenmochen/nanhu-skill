@@ -335,6 +335,10 @@ def _cmd_resources_sub_projects(client: NanhuClient, args: argparse.Namespace) -
     return resources_api.list_sub_projects(client, args.project_id)
 
 
+def _cmd_resources_promotions(client: NanhuClient, args: argparse.Namespace) -> Any:
+    return resources_api.list_promotions(client, args.project_id)
+
+
 def _cmd_algorithms_list(client: NanhuClient, args: argparse.Namespace) -> Any:
     return algorithms_api.list_algorithms(
         client,
@@ -584,6 +588,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = res_sub.add_parser("sub-projects", help="list available sub-projects")
     p.add_argument("--project-id", required=True)
     p.set_defaults(_handler=_cmd_resources_sub_projects)
+
+    p = res_sub.add_parser("promotions", help="list project spot/promotion prices")
+    p.add_argument("--project-id", required=True)
+    p.set_defaults(_handler=_cmd_resources_promotions)
 
     # --- algorithms ---
     algo_p = sub.add_parser("algorithms", help="algorithm list/detail")

@@ -380,6 +380,15 @@ def test_resources_commands(fake_client: MagicMock, monkeypatch: pytest.MonkeyPa
     assert code == 0
     m.assert_called_once_with(fake_client, "pr-1")
 
+    with patch.object(cli.resources_api, "list_promotions", return_value={"promo": 1}) as m:
+        code, _ = _run(
+            ["resources", "promotions", "--project-id", "pr-1"],
+            fake_client,
+            monkeypatch,
+        )
+    assert code == 0
+    m.assert_called_once_with(fake_client, "pr-1")
+
 
 def test_algorithms_and_images(fake_client: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
     with patch.object(cli.algorithms_api, "list_algorithms", return_value={"a": 1}) as m:

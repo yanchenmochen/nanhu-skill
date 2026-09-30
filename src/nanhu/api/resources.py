@@ -9,6 +9,7 @@ from nanhu.client import NanhuClient
 SPECS_PATH = "/api/open/dros-ic-platform/open-job/specs"
 PROJECTS_PATH = "/api/open/resource-proxy/subMission/open-job/projects"
 SUB_PROJECTS_PATH = "/api/open/resource-proxy/subMission/open-job/subProjects"
+PROMOTIONS_PATH = "/api/open/resource-proxy/subMission/open-job/promotion/list"
 
 
 def list_specs(
@@ -70,3 +71,17 @@ def list_sub_projects(
         "projectId": project_id,
     }
     return client.request("GET", SUB_PROJECTS_PATH, query=query)
+
+
+def list_promotions(
+    client: NanhuClient,
+    project_id: str,
+    *,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    """查询项目弹性填充价格（GET .../open-job/promotion/list）。"""
+    query: dict[str, Any] = {
+        "userId": user_id or client.user_id,
+        "projectId": project_id,
+    }
+    return client.request("GET", PROMOTIONS_PATH, query=query)

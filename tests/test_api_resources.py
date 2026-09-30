@@ -116,6 +116,37 @@ def test_list_sub_projects_requires_project_id() -> None:
     assert calls[0]["headers"]["accessToken"] == "tok-res"
 
 
+def test_list_promotions() -> None:
+    calls: list[dict[str, Any]] = []
+
+    def handler(method: str, url: str, **kwargs: Any) -> HttpResponse:
+        calls.append({"method": method, "url": url})
+        return _ok(
+            [
+                {
+                    "promotionDetailId": "pd-1",
+                    "promotionType": "fixedPrice",
+                    "promotionValue": 0.01,
+                    "promotionUnit": "元 / 卡 * 小时",
+                }
+            ],
+            code=200,
+        )
+
+    client = _client()
+    with patch("nanhu.auth.http_json", side_effect=_fake_http_factory(handler)), patch(
+        "nanhu.http.http_json", side_effect=_fake_http_factory(handler)
+    ):
+        out = resources.list_promotions(client, "pr-1226")
+
+    assert out["data"][0]["promotionDetailId"] == "pd-1"
+    parsed = urlparse(calls[0]["url"])
+    assert parsed.path == "/api/open/resource-proxy/subMission/open-job/promotion/list"
+    qs = parse_qs(parsed.query)
+    assert qs["userId"] == ["uid-42"]
+    assert qs["projectId"] == ["pr-1226"]
+
+
 def test_list_specs_api_error() -> None:
     def handler(method: str, url: str, **kwargs: Any) -> HttpResponse:
         return HttpResponse(status=200, payload={"code": 500, "msg": "boom", "data": None})
