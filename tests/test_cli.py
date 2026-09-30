@@ -516,6 +516,45 @@ def test_build_parser_help() -> None:
     help_text = parser.format_help()
     assert "jobs" in help_text
     assert "devenv" in help_text
+    assert "seahold" in help_text
+
+
+def test_seahold_commands(fake_client: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+    with patch.object(cli.seahold_api, "list_seahold", return_value={"list": []}) as m:
+        code, _ = _run(["seahold", "list", "--status", "Created"], fake_client, monkeypatch)
+    assert code == 0
+    assert m.call_args.kwargs["status"] == "Created"
+
+    with patch.object(
+        cli.seahold_api, "create_seahold_from_config", return_value={"dry_run": True}
+    ) as m:
+        code, out = _run(
+            ["seahold", "create", "--config", "/tmp/s.yaml"],
+            fake_client,
+            monkeypatch,
+        )
+    assert code == 0 and out["dry_run"] is True
+    assert m.call_args.kwargs["submit"] is False
+
+    with patch.object(cli.seahold_api, "destroy_seahold", return_value={"ok": 1}) as m:
+        code, _ = _run(
+            [
+                "seahold",
+                "destroy",
+                "--uuid",
+                "u1",
+                "--ak",
+                "AK",
+                "--sk",
+                "SK",
+                "--submit",
+            ],
+            fake_client,
+            monkeypatch,
+        )
+    assert code == 0
+    assert m.call_args.kwargs["submit"] is True
+    assert m.call_args.kwargs["uuid"] == "u1"
 
 
 def test_main_prints_real_json(capsys: pytest.CaptureFixture[str], fake_client: MagicMock) -> None:

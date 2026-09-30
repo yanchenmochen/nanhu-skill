@@ -19,6 +19,7 @@ from nanhu.api import jobs as jobs_api
 from nanhu.api import logs as logs_api
 from nanhu.api import pods as pods_api
 from nanhu.api import resources as resources_api
+from nanhu.api import seahold as seahold_api
 from nanhu.client import NanhuClient
 from nanhu.config import ConfigError
 
@@ -435,6 +436,38 @@ def _cmd_images_unshare(client: NanhuClient, args: argparse.Namespace) -> Any:
 
 
 # ---------------------------------------------------------------------------
+# seahold
+# ---------------------------------------------------------------------------
+
+
+def _cmd_seahold_list(client: NanhuClient, args: argparse.Namespace) -> Any:
+    return seahold_api.list_seahold(
+        client,
+        uuid=args.uuid,
+        ak=args.ak,
+        status=args.status,
+        page=args.page,
+        page_size=args.page_size,
+    )
+
+
+def _cmd_seahold_create(client: NanhuClient, args: argparse.Namespace) -> Any:
+    return seahold_api.create_seahold_from_config(
+        client, args.config, submit=args.submit
+    )
+
+
+def _cmd_seahold_destroy(client: NanhuClient, args: argparse.Namespace) -> Any:
+    return seahold_api.destroy_seahold(
+        client,
+        uuid=args.uuid,
+        ak=args.ak,
+        sk=args.sk,
+        submit=args.submit,
+    )
+
+
+# ---------------------------------------------------------------------------
 # parser
 # ---------------------------------------------------------------------------
 
@@ -735,6 +768,30 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--user-name", required=True, help="comma-separated usernames")
     _add_submit_flag(p)
     p.set_defaults(_handler=_cmd_images_unshare)
+
+    # --- seahold ---
+    sea_p = sub.add_parser("seahold", help="seahold private dataset PVC (Zero2X)")
+    sea_sub = sea_p.add_subparsers(dest="action", required=True)
+
+    p = sea_sub.add_parser("list", help="list seahold PVCs")
+    p.add_argument("--uuid", default=None)
+    p.add_argument("--ak", default=None)
+    p.add_argument("--status", default=None, help="Creating|Created|Failed|Recycling")
+    p.add_argument("--page", type=int, default=None)
+    p.add_argument("--page-size", type=int, default=None)
+    p.set_defaults(_handler=_cmd_seahold_list)
+
+    p = sea_sub.add_parser("create", help="create seahold PVC from YAML (dry-run unless --submit)")
+    p.add_argument("--config", type=Path, required=True)
+    _add_submit_flag(p)
+    p.set_defaults(_handler=_cmd_seahold_create)
+
+    p = sea_sub.add_parser("destroy", help="destroy seahold PVC (dry-run unless --submit)")
+    p.add_argument("--uuid", required=True)
+    p.add_argument("--ak", required=True)
+    p.add_argument("--sk", required=True)
+    _add_submit_flag(p)
+    p.set_defaults(_handler=_cmd_seahold_destroy)
 
     return parser
 
