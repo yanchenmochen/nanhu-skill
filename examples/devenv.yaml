@@ -1,0 +1,34 @@
+# Example Nanhu V2 开发环境 create / restart payload (snake_case).
+# Passwords are placeholders — replace before --submit.
+# Secrets (credentials) stay in credentials.env, not here.
+
+name: my-dev-env
+image_url: registry.example.com/project/dev:latest
+ssh_pwd: "ChangeMe@1"
+vscode_password: "ChangeMe@1"
+
+resource:
+  project_uuid: pr-xxxxxxxx
+  sub_mission_name: my-project
+  compute_spec_uuid: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  compute_spec_name: cpu_test
+  worker_num: 1
+  # sub_quota_id: optional
+  # sub_quota_name: optional
+
+mounted_storages:
+  - uuid: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    oss_name: my-oss
+    bucket: default
+    path: ""
+    output_path: /mnt/storage
+
+# Optional:
+# data_sets: []
+# customize_ports: [8881]
+# start_cmd: "echo ready"
+# env_vars:
+#   MY_ENV: value
+
+# For restart, also set:
+# uuid: jb-jupyter-xxxxxxxx
