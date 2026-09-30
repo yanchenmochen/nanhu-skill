@@ -1,0 +1,44 @@
+# Example Nanhu AI_TRAIN create payload (friendly YAML).
+# Secrets stay in credentials.env — do not put tokens here.
+# Default is dry-run; pass submit=True / CLI --submit to create.
+#
+# Placeholders below must be replaced with real UUIDs from the target cluster.
+
+biz_type: DROS
+job_type: AI_TRAIN
+name_prefix: nanhu-train-demo
+
+algorithm:
+  uuid: 00000000-0000-0000-0000-000000000001
+  name: demo-algorithm
+  mount_path: /mnt/algorithm
+
+start_cmd: >-
+  python -m torch.distributed.run --nproc_per_node=${TQ_GPU_NUM} train.py
+
+resource:
+  project_uuid: project_replace_me
+  sub_mission_name: demo-project
+  compute_spec_uuid: 00000000-0000-0000-0000-000000000002
+  compute_spec_name: GPU-8
+  worker_num: 1
+
+mounted_storages:
+  - uuid: 00000000-0000-0000-0000-000000000003
+    oss_name: zj-data
+    bucket: data
+    path: /
+    output_path: /mnt/data
+
+output_dir:
+  uuid: 00000000-0000-0000-0000-000000000003
+  bucket: data
+  path: /outputs/demo
+  output_path: /mnt/data/outputs/demo
+
+env_vars:
+  OUTPUT_DIR: /mnt/data/outputs/demo
+  PYTHONUNBUFFERED: "1"
+
+use_tensorboard: false
+auto_restart: false

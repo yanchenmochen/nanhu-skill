@@ -1,4 +1,4 @@
-"""Jobs OpenAPI: list / detail / stop / restart (Wave1 F4–F5).
+"""Jobs OpenAPI: list / detail / lifecycle / create train (Wave1 F4–F6).
 
 Write paths default to dry-run unless ``submit=True``.
 ``userId`` always comes from ``client.user_id``; ``accessToken`` via ``client.request``.
@@ -6,9 +6,16 @@ Write paths default to dry-run unless ``submit=True``.
 
 from __future__ import annotations
 
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from nanhu.client import NanhuClient
+
+try:
+    import yaml
+except ImportError as exc:  # pragma: no cover
+    raise SystemExit("PyYAML required: pip install pyyaml") from exc
 
 JOB_TYPE_TRAIN = "AI_TRAIN"
 JOB_TYPE_DEPLOY = "AI_ONLINE_INFERENCE_SERVICE"
@@ -19,6 +26,10 @@ PATH_JOB_LIST_ALL = "/api/open/dros-ic-platform/open-job/jobListAll"
 PATH_JOB_DETAIL = "/api/open/dros-ic-platform/open-job/getJobDetail"
 PATH_STOP = "/api/open/dros-ic-platform/open-job/stop"
 PATH_RESTART = "/api/open/dros-ic-platform/open-job/restart"
+PATH_CREATE_TRAIN_V2 = "/api/open/dros-ic-platform/open-job/create"
+PATH_CREATE_TRAIN_V3 = "/api/open/dros-ic-platform/open-job/v3/create"
+
+_FRIENDLY_META_KEYS = frozenset({"api_base", "user_id", "biz_type", "name_prefix"})
 
 
 def _drop_none(d: dict[str, Any]) -> dict[str, Any]:
@@ -52,6 +63,176 @@ def _dry_run(
         "query": query,
         "body": body,
     }
+
+
+def _is_api_shaped_body(cfg: dict[str, Any]) -> bool:
+    """True when ``cfg`` already looks like an OpenAPI JSON body (camelCase)."""
+    if "algorithmUuid" in cfg or "algorithmImageUrl" in cfg:
+        return True
+    resource = cfg.get("resource")
+    if isinstance(resource, dict) and "projectUuid" in resource:
+        return True
+    return False
+
+
+def load_job_config(path: str | Path) -> dict[str, Any]:
+    """Load a YAML/JSON job config file into a dict."""
+    p = Path(path)
+    text = p.read_text(encoding="utf-8")
+    if p.suffix.lower() in {".yaml", ".yml"}:
+        data = yaml.safe_load(text) or {}
+    else:
+        import json
+
+        data = json.loads(text)
+    if not isinstance(data, dict):
+        raise ValueError(f"job config must be a mapping, got {type(data).__name__}")
+    return data
+
+
+def build_train_payload(
+    cfg: dict[str, Any],
+    *,
+    name: str | None = None,
+    worker_num: int | None = None,
+    extra_env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Build create-train request body from friendly YAML or an API-shaped dict.
+
+    Friendly keys follow ``submit_nanhu_job`` conventions (``algorithm.uuid``,
+    ``resource.project_uuid``, ``env_vars`` map, etc.). API-shaped bodies
+    (``algorithmUuid`` / ``algorithmImageUrl`` / ``resource.projectUuid``) are
+    copied with optional ``name`` / ``worker_num`` / env overrides.
+    """
+    if _is_api_shaped_body(cfg):
+        body = {k: v for k, v in cfg.items() if k not in _FRIENDLY_META_KEYS}
+        body = dict(body)
+        if name is not None:
+            body["name"] = name
+        if worker_num is not None:
+            resource = dict(body.get("resource") or {})
+            resource["workerNum"] = int(worker_num)
+            body["resource"] = resource
+        if extra_env:
+            env_vars = list(body.get("envVars") or [])
+            for k, v in extra_env.items():
+                env_vars = [e for e in env_vars if e.get("key") != k]
+                env_vars.append({"key": k, "value": str(v)})
+            body["envVars"] = env_vars
+        return body
+
+    algo = cfg.get("algorithm") or {}
+    resource_cfg = dict(cfg.get("resource") or {})
+    wn = int(worker_num if worker_num is not None else resource_cfg.get("worker_num", 1))
+
+    env_src = cfg.get("env_vars") or {}
+    if isinstance(env_src, dict):
+        env_vars = [{"key": str(k), "value": str(v)} for k, v in env_src.items()]
+    else:
+        env_vars = list(env_src)
+    for k, v in (extra_env or {}).items():
+        env_vars = [e for e in env_vars if e.get("key") != k]
+        env_vars.append({"key": k, "value": str(v)})
+
+    mounted: list[dict[str, Any]] = []
+    for m in cfg.get("mounted_storages") or []:
+        item: dict[str, Any] = {
+            "uuid": m["uuid"],
+            "ossName": m.get("oss_name") or m.get("ossName"),
+            "bucket": m["bucket"],
+        }
+        if m.get("path") is not None:
+            item["path"] = m["path"]
+        out_path = m.get("output_path", m.get("outputPath"))
+        if out_path is not None:
+            item["outputPath"] = out_path
+        mounted.append(item)
+
+    out = cfg.get("output_dir") or cfg.get("outputDir") or {}
+    output_dir: dict[str, Any] | None = None
+    if out:
+        output_dir = {"uuid": out["uuid"], "bucket": out["bucket"]}
+        if out.get("path") is not None:
+            output_dir["path"] = out["path"]
+        op = out.get("output_path", out.get("outputPath"))
+        if op is not None:
+            output_dir["outputPath"] = op
+
+    job_name = name or cfg.get("name")
+    if not job_name:
+        raise ValueError("train payload requires name= or cfg['name']")
+
+    body: dict[str, Any] = {
+        "name": job_name,
+        "jobType": cfg.get("job_type") or cfg.get("jobType") or JOB_TYPE_TRAIN,
+        "startCmd": str(cfg.get("start_cmd") or cfg.get("startCmd") or "").strip(),
+        "resource": {
+            "projectUuid": resource_cfg.get("project_uuid") or resource_cfg["projectUuid"],
+            "subMissionName": resource_cfg.get("sub_mission_name")
+            or resource_cfg["subMissionName"],
+            "computeSpecUuid": resource_cfg.get("compute_spec_uuid")
+            or resource_cfg["computeSpecUuid"],
+            "computeSpecName": resource_cfg.get("compute_spec_name")
+            or resource_cfg["computeSpecName"],
+            "workerNum": wn,
+        },
+        "envVars": env_vars,
+    }
+
+    if algo.get("uuid") or cfg.get("algorithm_uuid"):
+        body["algorithmUuid"] = algo.get("uuid") or cfg["algorithm_uuid"]
+        body["algorithmName"] = algo.get("name") or cfg.get("algorithm_name") or ""
+    if cfg.get("algorithm_image_url") or cfg.get("algorithmImageUrl"):
+        body["algorithmImageUrl"] = cfg.get("algorithm_image_url") or cfg["algorithmImageUrl"]
+
+    mount_path = (algo.get("mount_path") or cfg.get("algorithm_mount_path") or "").strip()
+    if mount_path:
+        body["algorithmMountPath"] = mount_path
+
+    run_type = (cfg.get("run_type") or cfg.get("runType") or "").strip()
+    if run_type:
+        body["runType"] = run_type
+
+    sq_id = resource_cfg.get("sub_quota_id") or resource_cfg.get("subQuotaId")
+    sq_name = resource_cfg.get("sub_quota_name") or resource_cfg.get("subQuotaName")
+    if sq_id:
+        body["resource"]["subQuotaId"] = sq_id
+    if sq_name:
+        body["resource"]["subQuotaName"] = sq_name
+
+    if mounted:
+        body["mountedStorages"] = mounted
+    if output_dir is not None:
+        body["outputDir"] = output_dir
+
+    if "use_tensorboard" in cfg or "useTensorBoard" in cfg:
+        body["useTensorBoard"] = bool(cfg.get("use_tensorboard", cfg.get("useTensorBoard")))
+    if "auto_restart" in cfg or "autoRestart" in cfg:
+        body["autoRestart"] = bool(cfg.get("auto_restart", cfg.get("autoRestart")))
+
+    for src_key, dst_key in (
+        ("dataSets", "dataSets"),
+        ("data_sets", "dataSets"),
+        ("subJobs", "subJobs"),
+        ("sub_jobs", "subJobs"),
+        ("algoOssVolume", "algoOssVolume"),
+        ("algo_oss_volume", "algoOssVolume"),
+        ("gitRepoInfo", "gitRepoInfo"),
+        ("git_repo_info", "gitRepoInfo"),
+        ("resumeable", "resumeable"),
+        ("enableSpotRestart", "enableSpotRestart"),
+        ("enable_spot_restart", "enableSpotRestart"),
+        ("fallBack", "fallBack"),
+        ("fall_back", "fallBack"),
+        ("maxRestarts", "maxRestarts"),
+        ("max_restarts", "maxRestarts"),
+        ("promotionDetail", "promotionDetail"),
+        ("promotion_detail", "promotionDetail"),
+    ):
+        if src_key in cfg and cfg[src_key] is not None:
+            body[dst_key] = cfg[src_key]
+
+    return body
 
 
 class JobsApi:
@@ -151,6 +332,69 @@ class JobsApi:
             return _dry_run("POST", PATH_RESTART, query=query)
         return self.client.request("POST", PATH_RESTART, query=query)
 
+    def create_train(
+        self,
+        body: dict[str, Any],
+        *,
+        version: str = "v2",
+        biz_type: str | None = DEFAULT_BIZ_TYPE,
+        user_extra_info: str | None = None,
+        submit: bool = False,
+    ) -> dict[str, Any]:
+        """POST create train job (V2 ``/create`` or V3 ``/v3/create``).
+
+        Dry-run unless ``submit=True``. V3 OpenAPI omits ``bizType`` by default.
+        """
+        ver = version.lower().lstrip("v")
+        if ver == "2":
+            path = PATH_CREATE_TRAIN_V2
+            query = _user_query(
+                self.client,
+                biz_type=biz_type if biz_type is not None else DEFAULT_BIZ_TYPE,
+                userExtraInfo=user_extra_info,
+            )
+        elif ver == "3":
+            path = PATH_CREATE_TRAIN_V3
+            query = _user_query(
+                self.client,
+                biz_type=None,
+                userExtraInfo=user_extra_info,
+            )
+            if biz_type is not None and biz_type != DEFAULT_BIZ_TYPE:
+                query["bizType"] = biz_type
+        else:
+            raise ValueError(f"unsupported train API version: {version!r} (use v2/v3)")
+
+        if not submit:
+            return _dry_run("POST", path, query=query, body=body)
+        return self.client.request("POST", path, query=query, body=body)
+
+    def create_train_from_config(
+        self,
+        cfg: dict[str, Any] | str | Path,
+        *,
+        name: str | None = None,
+        worker_num: int | None = None,
+        extra_env: dict[str, str] | None = None,
+        version: str = "v2",
+        biz_type: str | None = DEFAULT_BIZ_TYPE,
+        submit: bool = False,
+    ) -> dict[str, Any]:
+        """Load/build train payload then ``create_train`` (dry-run by default)."""
+        if isinstance(cfg, (str, Path)):
+            cfg = load_job_config(cfg)
+        resolved_name = name
+        if resolved_name is None and not cfg.get("name"):
+            prefix = cfg.get("name_prefix") or "nanhu-job"
+            resolved_name = f"{prefix}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        body = build_train_payload(
+            cfg, name=resolved_name, worker_num=worker_num, extra_env=extra_env
+        )
+        resolved_biz = biz_type
+        if biz_type is DEFAULT_BIZ_TYPE and cfg.get("biz_type"):
+            resolved_biz = str(cfg["biz_type"])
+        return self.create_train(body, version=version, biz_type=resolved_biz, submit=submit)
+
 
 def list_jobs(client: NanhuClient, job_type: str, **kwargs: Any) -> dict[str, Any]:
     return JobsApi(client).list_jobs(job_type, **kwargs)
@@ -178,3 +422,13 @@ def stop_job(client: NanhuClient, job_id: str, **kwargs: Any) -> dict[str, Any]:
 
 def restart_job(client: NanhuClient, job_id: str, **kwargs: Any) -> dict[str, Any]:
     return JobsApi(client).restart_job(job_id, **kwargs)
+
+
+def create_train(client: NanhuClient, body: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+    return JobsApi(client).create_train(body, **kwargs)
+
+
+def create_train_from_config(
+    client: NanhuClient, cfg: dict[str, Any] | str | Path, **kwargs: Any
+) -> dict[str, Any]:
+    return JobsApi(client).create_train_from_config(cfg, **kwargs)
