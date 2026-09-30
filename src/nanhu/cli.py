@@ -296,6 +296,18 @@ def _cmd_logs_download(client: NanhuClient, args: argparse.Namespace) -> Any:
     return out
 
 
+def _cmd_logs_prefetch(client: NanhuClient, args: argparse.Namespace) -> Any:
+    return logs_api.prefetch_log(
+        client,
+        args.job_id,
+        args.pod_names,
+        biz_type=args.biz_type,
+        start=args.start,
+        end=args.end,
+        step=args.step,
+    )
+
+
 # ---------------------------------------------------------------------------
 # resources / algorithms / images
 # ---------------------------------------------------------------------------
@@ -543,6 +555,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--end", type=int, default=None)
     p.add_argument("--run", type=int, default=None)
     p.set_defaults(_handler=_cmd_logs_download)
+
+    p = logs_sub.add_parser("prefetch", help="time-window log volume stats (pre_fetch)")
+    p.add_argument("--job-id", required=True)
+    p.add_argument("--pod-names", required=True, help="comma-separated pod names")
+    p.add_argument("--biz-type", default="DROS")
+    p.add_argument("--start", type=int, default=None, help="window start ms")
+    p.add_argument("--end", type=int, default=None, help="window end ms")
+    p.add_argument("--step", default=None, help="window size in minutes (default server 30)")
+    p.set_defaults(_handler=_cmd_logs_prefetch)
 
     # --- resources ---
     res_p = sub.add_parser("resources", help="compute specs / projects")

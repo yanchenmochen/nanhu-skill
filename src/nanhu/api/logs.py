@@ -19,6 +19,7 @@ DEFAULT_BIZ_TYPE = "DROS"
 
 PATH_LOG_INFO = "/api/open/job-service/log/info"
 PATH_LOG_DOWNLOAD = "/api/open/job-service/log/download"
+PATH_LOG_PREFETCH = "/api/open/job-service/log/pre_fetch"
 
 # Apifox enum for log/info ``zone`` header.
 KNOWN_ZONES = frozenset({"Z2120", "Z1120", "V5000", "X10000"})
@@ -102,6 +103,35 @@ def get_log_info(
         ),
         headers={"zone": zone_value},
     )
+
+
+def prefetch_log(
+    client: NanhuClient,
+    job_id: str,
+    job_pod_names: str | Sequence[str],
+    *,
+    biz_type: str = DEFAULT_BIZ_TYPE,
+    start: int | None = None,
+    end: int | None = None,
+    step: int | str | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    """查询时间窗口日志量统计（GET .../log/pre_fetch）。
+
+    ``step`` 为窗口跨度（分钟，最小 1；不传则服务端默认 30）。
+    不要求 ``zone`` header（与 Apifox 一致）。
+    """
+    query = _log_query(
+        job_id,
+        job_pod_names,
+        biz_type=biz_type,
+        start=start,
+        end=end,
+    )
+    query["userId"] = user_id or client.user_id
+    if step is not None:
+        query["step"] = step
+    return client.request("GET", PATH_LOG_PREFETCH, query=query)
 
 
 def _is_private_host(url: str) -> bool:

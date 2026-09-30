@@ -145,3 +145,39 @@ def test_download_log_http_error() -> None:
     ):
         with pytest.raises(RuntimeError, match="download log HTTP 500"):
             logs.download_log(client, JOB_ID, "pod-a")
+
+
+def test_prefetch_log() -> None:
+    client = _client()
+    calls: list[dict[str, Any]] = []
+
+    def fake_http(method: str, url: str, **kwargs: Any) -> HttpResponse:
+        if url.endswith("/api/open/credentials"):
+            return _token_ok()
+        calls.append({"method": method, "url": url, "headers": kwargs.get("headers")})
+        return _ok({"summary": {"totalCount": 4}, "rawObservables": {}})
+
+    with patch("nanhu.auth.http_json", side_effect=fake_http), patch(
+        "nanhu.http.http_json", side_effect=fake_http
+    ):
+        out = logs.prefetch_log(
+            client,
+            JOB_ID,
+            PODS,
+            start=100,
+            end=200,
+            step=5,
+        )
+
+    assert out["data"]["summary"]["totalCount"] == 4
+    assert calls[0]["method"] == "GET"
+    assert logs.PATH_LOG_PREFETCH in calls[0]["url"]
+    # pre_fetch does not require zone header
+    assert "zone" not in (calls[0]["headers"] or {})
+    qs = parse_qs(urlparse(calls[0]["url"]).query)
+    assert qs["jobId"] == [JOB_ID]
+    assert qs["jobPodNames"] == [PODS]
+    assert qs["userId"] == ["uid-l"]
+    assert qs["step"] == ["5"]
+    assert qs["start"] == ["100"]
+    assert qs["end"] == ["200"]

@@ -333,6 +333,30 @@ def test_logs_get_and_download(
     assert dl.call_args.kwargs["dest_path"] == out_path
 
 
+def test_logs_prefetch(fake_client: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+    with patch.object(
+        cli.logs_api, "prefetch_log", return_value={"data": {"summary": {"totalCount": 1}}}
+    ) as m:
+        code, out = _run(
+            [
+                "logs",
+                "prefetch",
+                "--job-id",
+                "j1",
+                "--pod-names",
+                "pod-0",
+                "--step",
+                "10",
+            ],
+            fake_client,
+            monkeypatch,
+        )
+    assert code == 0
+    assert out["data"]["summary"]["totalCount"] == 1
+    assert m.call_args.kwargs["step"] == "10"
+    assert m.call_args.args[1] == "j1"
+
+
 # ---- resources / algorithms / images ----
 
 
