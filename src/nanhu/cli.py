@@ -29,6 +29,7 @@ from nanhu.formatters import (
     redact_secrets,
     should_use_table,
 )
+from nanhu.http import hint_for_error
 
 CLUSTERS = ("wuxi", "x10000")
 DEFAULT_CLUSTER = "wuxi"
@@ -872,7 +873,11 @@ def main(argv: list[str] | None = None) -> int:
         client = _build_client(args)
         result = handler(client, args)
     except (ConfigError, ValueError, RuntimeError, FileNotFoundError, OSError) as exc:
-        _emit({"error": str(exc), "type": type(exc).__name__}, args)
+        err: dict[str, Any] = {"error": str(exc), "type": type(exc).__name__}
+        hint = hint_for_error(exc, cluster=getattr(args, "cluster", None))
+        if hint:
+            err["hint"] = hint
+        _emit(err, args)
         return 1
 
     _emit(result, args)

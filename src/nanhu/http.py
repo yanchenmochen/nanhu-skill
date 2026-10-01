@@ -33,11 +33,13 @@ class ApiError(RuntimeError):
         code: Any = None,
         payload: dict[str, Any] | None = None,
         http_status: int | None = None,
+        url: str | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.payload = payload or {}
         self.http_status = http_status
+        self.url = url
 
 
 @dataclass(frozen=True)
@@ -115,6 +117,7 @@ def parse_api_payload(
     response: HttpResponse,
     *,
     require_success: bool = True,
+    url: str | None = None,
 ) -> dict[str, Any]:
     """Interpret Nanhu envelope ``{code, data, message?, msg?}``.
 
@@ -131,8 +134,65 @@ def parse_api_payload(
             or payload.get("error")
             or f"Nanhu API error code={code!r}"
         )
-        raise ApiError(str(msg), code=code, payload=payload, http_status=response.status)
+        raise ApiError(
+            str(msg),
+            code=code,
+            payload=payload,
+            http_status=response.status,
+            url=url,
+        )
     return payload
+
+
+# Path fragments that are known-missing / flaky on wuxi (often HTTP 404).
+_WUXI_CAPABILITY_HINTS: tuple[tuple[str, str], ...] = (
+    (
+        "/dev-env/list",
+        "wuxi 常不支持开发环境列表 (dev-env/list)；请改用平台 UI，或切换 --cluster x10000",
+    ),
+    (
+        "/dev-env/",
+        "wuxi 上部分开发环境接口可能不可用；可改用平台 UI 或 --cluster x10000",
+    ),
+    (
+        "/open-job/images",
+        "wuxi 常不支持镜像列表/标签接口；请改用平台 UI，或切换 --cluster x10000",
+    ),
+    (
+        "jobListAll",
+        "wuxi 上 jobListAll 可能 404；请改用 jobs list --job-type AI_TRAIN|AI_ONLINE_INFERENCE_SERVICE",
+    ),
+    (
+        "/log/",
+        "wuxi 查日志常缺 zone 或接口失败；可显式传 --zone，或从 jobs detail 取 OUTPUT_DIR 读本地 run.log",
+    ),
+)
+
+
+def hint_for_error(
+    exc: BaseException,
+    *,
+    cluster: str | None = None,
+) -> str | None:
+    """Return an actionable hint for known cluster capability gaps, else None."""
+    cluster_norm = (cluster or "").strip().lower()
+    url = getattr(exc, "url", None) or ""
+    text = f"{url} {exc}"
+    http_status = getattr(exc, "http_status", None)
+    # Also inspect HttpError.status
+    if http_status is None:
+        http_status = getattr(exc, "status", None)
+
+    if cluster_norm == "wuxi":
+        for fragment, hint in _WUXI_CAPABILITY_HINTS:
+            if fragment in text or fragment in url:
+                return hint
+        if http_status == 404:
+            return (
+                "该接口在 wuxi 上可能不可用 (HTTP 404)；"
+                "请对照 references/pitfalls.md，或改用 --cluster x10000 / 平台 UI"
+            )
+    return None
 
 
 def request_json(
@@ -146,4 +206,4 @@ def request_json(
 ) -> dict[str, Any]:
     """Convenience: ``http_json`` + ``parse_api_payload``."""
     resp = http_json(method, url, headers=headers, body=body, timeout=timeout)
-    return parse_api_payload(resp, require_success=require_success)
+    return parse_api_payload(resp, require_success=require_success, url=url)
