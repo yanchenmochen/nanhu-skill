@@ -22,7 +22,7 @@ def fake_client() -> MagicMock:
 def _run(argv: list[str], fake_client: MagicMock, monkeypatch: pytest.MonkeyPatch) -> tuple[int, dict]:
     captured: dict = {}
 
-    def fake_print(payload):  # type: ignore[no-untyped-def]
+    def fake_print(payload, **_kwargs):  # type: ignore[no-untyped-def]
         captured["payload"] = payload
 
     monkeypatch.setattr(cli, "_print_json", fake_print)
@@ -503,7 +503,9 @@ def test_config_error_returns_json(monkeypatch: pytest.MonkeyPatch) -> None:
     from nanhu.config import ConfigError
 
     captured: dict = {}
-    monkeypatch.setattr(cli, "_print_json", lambda payload: captured.update(payload=payload))
+    monkeypatch.setattr(
+        cli, "_print_json", lambda payload, **_kwargs: captured.update(payload=payload)
+    )
     with patch.object(cli, "_build_client", side_effect=ConfigError("missing NANHU_APP_KEY")):
         code = cli.main(["jobs", "list", "--job-type", "AI_TRAIN"])
     assert code == 1
@@ -564,8 +566,35 @@ def test_main_prints_real_json(capsys: pytest.CaptureFixture[str], fake_client: 
     ):
         code = cli.main(["jobs", "list-all"])
     assert code == 0
-    data = json.loads(capsys.readouterr().out)
+    out = capsys.readouterr().out
+    data = json.loads(out)
     assert data == {"ok": True}
+    # Compact by default: no indent spaces after colon/comma.
+    assert ": " not in out
+    assert ", " not in out
+
+
+def test_main_pretty_json_indents(capsys: pytest.CaptureFixture[str], fake_client: MagicMock) -> None:
+    with (
+        patch.object(cli, "_build_client", return_value=fake_client),
+        patch.object(cli.jobs_api, "list_jobs_all", return_value={"ok": True, "n": 1}),
+    ):
+        code = cli.main(["--pretty", "jobs", "list-all"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert json.loads(out) == {"ok": True, "n": 1}
+    assert "\n" in out and "  " in out
+
+
+def test_jobs_list_default_page_size(fake_client: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+    with patch.object(cli.jobs_api, "list_jobs", return_value={"data": {"result": []}}) as m:
+        code, _ = _run(
+            ["jobs", "list", "--job-type", "AI_TRAIN"],
+            fake_client,
+            monkeypatch,
+        )
+    assert code == 0
+    assert m.call_args.kwargs["page_size"] == 20
 
 
 def test_jobs_list_redacts_password_in_json(

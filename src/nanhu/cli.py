@@ -34,9 +34,18 @@ CLUSTERS = ("wuxi", "x10000")
 DEFAULT_CLUSTER = "wuxi"
 
 
-def _print_json(payload: Any) -> None:
-    """Emit JSON for agent/script consumption (UTF-8, no ASCII escape)."""
-    sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+def _print_json(payload: Any, *, pretty: bool = False) -> None:
+    """Emit JSON for agent/script consumption (UTF-8, no ASCII escape).
+
+    Default is compact (no indent). Pass ``pretty=True`` for indented output.
+    """
+    if pretty:
+        text = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+    else:
+        text = json.dumps(
+            payload, ensure_ascii=False, separators=(",", ":"), default=str
+        )
+    sys.stdout.write(text)
     sys.stdout.write("\n")
 
 
@@ -48,7 +57,8 @@ def _emit(payload: Any, args: argparse.Namespace) -> None:
         rows = project_list_payload(redacted) or []
         sys.stdout.write(format_table(rows))
         return
-    _print_json(redacted)
+    pretty = bool(getattr(args, "pretty", False))
+    _print_json(redacted, pretty=pretty)
 
 
 def _parse_bool(value: str) -> bool:
@@ -508,6 +518,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="json",
         help="output format: json (full, default) or table (projected list columns)",
     )
+    parser.add_argument(
+        "--pretty",
+        action="store_true",
+        help="pretty-print JSON with indentation (default: compact)",
+    )
     _add_client_flags(parser)
 
     sub = parser.add_subparsers(dest="group", required=True)
@@ -522,7 +537,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--status", default=None)
     p.add_argument("--project-id", default=None)
     p.add_argument("--current", type=int, default=None)
-    p.add_argument("--page-size", type=int, default=None)
+    p.add_argument("--page-size", type=int, default=20)
     p.set_defaults(_handler=_cmd_jobs_list)
 
     p = jobs_sub.add_parser("detail", help="get job detail")
@@ -536,7 +551,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--status", default=None)
     p.add_argument("--project-id", default=None)
     p.add_argument("--current", type=int, default=None)
-    p.add_argument("--page-size", type=int, default=None)
+    p.add_argument("--page-size", type=int, default=20)
     p.set_defaults(_handler=_cmd_jobs_list_all)
 
     p = jobs_sub.add_parser("stop", help="stop a job (dry-run unless --submit)")
@@ -598,7 +613,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--status", default=None)
     p.add_argument("--project-id", default=None)
     p.add_argument("--current", type=int, default=1)
-    p.add_argument("--page-size", type=int, default=100)
+    p.add_argument("--page-size", type=int, default=20)
     p.add_argument("--biz-type", default=None)
     p.set_defaults(_handler=_cmd_devenv_list)
 
@@ -690,13 +705,13 @@ def build_parser() -> argparse.ArgumentParser:
     p = res_sub.add_parser("specs", help="list compute specs")
     p.add_argument("--resource-type", default=None)
     p.add_argument("--current", type=int, default=None)
-    p.add_argument("--page-size", type=int, default=None)
+    p.add_argument("--page-size", type=int, default=20)
     p.set_defaults(_handler=_cmd_resources_specs)
 
     p = res_sub.add_parser("projects", help="list projects")
     p.add_argument("--resource-type", default=None)
     p.add_argument("--current", type=int, default=None)
-    p.add_argument("--page-size", type=int, default=None)
+    p.add_argument("--page-size", type=int, default=20)
     p.set_defaults(_handler=_cmd_resources_projects)
 
     p = res_sub.add_parser("sub-projects", help="list available sub-projects")
@@ -714,7 +729,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = algo_sub.add_parser("list", help="list algorithms")
     p.add_argument("--is-public", type=_parse_bool, required=True, help="true=shared/public; false=mine")
     p.add_argument("--current", type=int, default=1)
-    p.add_argument("--page-size", type=int, default=10)
+    p.add_argument("--page-size", type=int, default=20)
     p.add_argument("--name", default=None)
     p.add_argument("--uuid", default=None)
     p.set_defaults(_handler=_cmd_algorithms_list)
@@ -769,7 +784,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = img_sub.add_parser("list", help="list image repositories")
     p.add_argument("--is-public", type=_parse_bool, required=True)
     p.add_argument("--current", type=int, default=1)
-    p.add_argument("--page-size", type=int, default=10)
+    p.add_argument("--page-size", type=int, default=20)
     p.add_argument("--name", default=None)
     p.set_defaults(_handler=_cmd_images_list)
 
@@ -777,7 +792,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--repository-name", required=True)
     p.add_argument("--source", required=True)
     p.add_argument("--current", type=int, default=1)
-    p.add_argument("--page-size", type=int, default=100)
+    p.add_argument("--page-size", type=int, default=20)
     p.set_defaults(_handler=_cmd_images_tags)
 
     p = img_sub.add_parser("share", help="add image share user (dry-run unless --submit)")
@@ -803,7 +818,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--ak", default=None)
     p.add_argument("--status", default=None, help="Creating|Created|Failed|Recycling")
     p.add_argument("--page", type=int, default=None)
-    p.add_argument("--page-size", type=int, default=None)
+    p.add_argument("--page-size", type=int, default=20)
     p.set_defaults(_handler=_cmd_seahold_list)
 
     p = sea_sub.add_parser("create", help="create seahold PVC from YAML (dry-run unless --submit)")
