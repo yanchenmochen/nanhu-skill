@@ -36,6 +36,16 @@ PATH_CREATE_DEPLOY_V3 = "/api/open/dros-ic-platform/open-job/v3/createInferenceJ
 _FRIENDLY_META_KEYS = frozenset({"api_base", "user_id", "biz_type", "name_prefix"})
 
 
+def normalize_status(status: str | None) -> str | None:
+    """Normalize job status filter to lowercase; ``None``/blank stay ``None``."""
+    if status is None:
+        return None
+    text = str(status).strip()
+    if not text:
+        return None
+    return text.lower()
+
+
 def _drop_none(d: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in d.items() if v is not None}
 
@@ -415,7 +425,7 @@ class JobsApi:
             self.client,
             biz_type=biz_type,
             jobType=job_type,
-            status=status,
+            status=normalize_status(status),
             projectId=project_id,
             current=current,
             pageSize=page_size,
@@ -458,12 +468,79 @@ class JobsApi:
             self.client,
             biz_type=None,
             jobType=job_type,
-            status=status,
+            status=normalize_status(status),
             projectId=project_id,
             current=current,
             pageSize=page_size,
         )
         return self.client.request("GET", PATH_JOB_LIST_ALL, query=query)
+
+    def list_running_jobs(
+        self,
+        *,
+        biz_type: str = DEFAULT_BIZ_TYPE,
+        project_id: str | None = None,
+        current: int | None = 1,
+        page_size: int | None = 20,
+        status: str = "running",
+    ) -> dict[str, Any]:
+        """Aggregate train + deploy lists filtered by ``status`` (default running).
+
+        Returns a synthetic envelope::
+
+            {
+              "code": 0,
+              "data": {
+                "result": [...],  # each row tagged with jobType
+                "train": {...},   # raw train list payload data/page
+                "deploy": {...},
+              }
+            }
+        """
+        status_norm = normalize_status(status) or "running"
+        train = self.list_train_jobs(
+            biz_type=biz_type,
+            status=status_norm,
+            project_id=project_id,
+            current=current,
+            page_size=page_size,
+        )
+        deploy = self.list_deploy_jobs(
+            biz_type=biz_type,
+            status=status_norm,
+            project_id=project_id,
+            current=current,
+            page_size=page_size,
+        )
+
+        def _rows(payload: dict[str, Any], job_type: str) -> list[dict[str, Any]]:
+            data = payload.get("data") if isinstance(payload, dict) else None
+            rows: list[Any]
+            if isinstance(data, dict):
+                rows = data.get("result") or []
+            elif isinstance(data, list):
+                rows = data
+            else:
+                rows = []
+            out: list[dict[str, Any]] = []
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                item = dict(row)
+                item.setdefault("jobType", job_type)
+                out.append(item)
+            return out
+
+        merged = _rows(train, JOB_TYPE_TRAIN) + _rows(deploy, JOB_TYPE_DEPLOY)
+        return {
+            "code": 0,
+            "data": {
+                "result": merged,
+                "status": status_norm,
+                "train": train.get("data") if isinstance(train, dict) else train,
+                "deploy": deploy.get("data") if isinstance(deploy, dict) else deploy,
+            },
+        }
 
     def stop_job(
         self,
@@ -702,6 +779,10 @@ def get_job_detail(client: NanhuClient, job_id: str, **kwargs: Any) -> dict[str,
 
 def list_jobs_all(client: NanhuClient, **kwargs: Any) -> dict[str, Any]:
     return JobsApi(client).list_jobs_all(**kwargs)
+
+
+def list_running_jobs(client: NanhuClient, **kwargs: Any) -> dict[str, Any]:
+    return JobsApi(client).list_running_jobs(**kwargs)
 
 
 def stop_job(client: NanhuClient, job_id: str, **kwargs: Any) -> dict[str, Any]:

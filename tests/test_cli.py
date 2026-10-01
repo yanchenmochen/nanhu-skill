@@ -67,6 +67,54 @@ def test_jobs_list_all(fake_client: MagicMock, monkeypatch: pytest.MonkeyPatch) 
     assert m.call_args.kwargs["status"] == "Running"
 
 
+def test_jobs_running(fake_client: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = {
+        "code": 0,
+        "data": {
+            "result": [
+                {"name": "t1", "uuid": "jt-1", "status": "running", "jobType": "AI_TRAIN"}
+            ],
+            "status": "running",
+        },
+    }
+    with patch.object(cli.jobs_api, "list_running_jobs", return_value=payload) as m:
+        code, out = _run(["jobs", "running"], fake_client, monkeypatch)
+    assert code == 0
+    assert out["data"]["result"][0]["uuid"] == "jt-1"
+    assert m.call_args.kwargs["status"] == "running"
+    assert m.call_args.kwargs["page_size"] == 20
+
+
+def test_jobs_running_format_table(
+    capsys: pytest.CaptureFixture[str], fake_client: MagicMock
+) -> None:
+    payload = {
+        "code": 0,
+        "data": {
+            "result": [
+                {
+                    "name": "t1",
+                    "uuid": "jt-1",
+                    "status": "running",
+                    "jobDuration": "1h",
+                    "createDate": 1_705_248_000_000,
+                    "computeSpecName": "A",
+                    "workerNum": 1,
+                }
+            ]
+        },
+    }
+    with (
+        patch.object(cli, "_build_client", return_value=fake_client),
+        patch.object(cli.jobs_api, "list_running_jobs", return_value=payload),
+    ):
+        code = cli.main(["--format", "table", "jobs", "running"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "t1" in out and "jt-1" in out
+    assert out.strip().startswith("name")
+
+
 def test_jobs_stop_dry_run_default(fake_client: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
     dry = {"dry_run": True, "method": "PUT", "path": "/stop", "query": {}}
     with patch.object(cli.jobs_api, "stop_job", return_value=dry) as m:

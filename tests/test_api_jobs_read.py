@@ -16,7 +16,9 @@ from nanhu.api.jobs import (
     list_deploy_jobs,
     list_jobs,
     list_jobs_all,
+    list_running_jobs,
     list_train_jobs,
+    normalize_status,
 )
 from nanhu.client import NanhuClient
 
@@ -114,3 +116,48 @@ def test_optional_filters_omitted_when_none() -> None:
     q = mock.call_args.kwargs["query"]
     assert q == {"userId": "uid-42", "bizType": "DROS", "jobId": "jb-x"}
     assert "jobType" not in q
+
+
+def test_normalize_status_lowercase() -> None:
+    assert normalize_status("Running") == "running"
+    assert normalize_status("ERROR") == "error"
+    assert normalize_status(None) is None
+    assert normalize_status("  ") is None
+
+
+def test_list_jobs_normalizes_status_case() -> None:
+    client = _client()
+    mock = _mock_request(client)
+    list_jobs(client, JOB_TYPE_TRAIN, status="Running")
+    assert mock.call_args.kwargs["query"]["status"] == "running"
+
+
+def test_list_running_jobs_aggregates_train_and_deploy() -> None:
+    client = _client()
+    calls: list[tuple[str, dict]] = []
+
+    def fake_request(method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+        q = kwargs.get("query") or {}
+        calls.append((path, q))
+        job_type = q.get("jobType")
+        if job_type == JOB_TYPE_TRAIN:
+            return {
+                "code": 0,
+                "data": {"result": [{"name": "t1", "uuid": "jt-1", "status": "running"}]},
+            }
+        return {
+            "code": 0,
+            "data": {"result": [{"name": "d1", "uuid": "jd-1", "status": "running"}]},
+        }
+
+    client.request = fake_request  # type: ignore[method-assign]
+    out = list_running_jobs(client, page_size=10)
+    assert out["code"] == 0
+    rows = out["data"]["result"]
+    assert len(rows) == 2
+    assert rows[0]["uuid"] == "jt-1" and rows[0]["jobType"] == JOB_TYPE_TRAIN
+    assert rows[1]["uuid"] == "jd-1" and rows[1]["jobType"] == JOB_TYPE_DEPLOY
+    assert out["data"]["status"] == "running"
+    assert len(calls) == 2
+    assert all(c[1]["status"] == "running" for c in calls)
+    assert all(c[1]["pageSize"] == 10 for c in calls)

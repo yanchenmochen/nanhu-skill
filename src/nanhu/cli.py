@@ -139,6 +139,17 @@ def _cmd_jobs_list_all(client: NanhuClient, args: argparse.Namespace) -> Any:
     )
 
 
+def _cmd_jobs_running(client: NanhuClient, args: argparse.Namespace) -> Any:
+    return jobs_api.list_running_jobs(
+        client,
+        biz_type=args.biz_type,
+        project_id=args.project_id,
+        current=args.current,
+        page_size=args.page_size,
+        status=args.status,
+    )
+
+
 def _cmd_jobs_stop(client: NanhuClient, args: argparse.Namespace) -> Any:
     return jobs_api.stop_job(
         client,
@@ -553,6 +564,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--current", type=int, default=None)
     p.add_argument("--page-size", type=int, default=20)
     p.set_defaults(_handler=_cmd_jobs_list_all)
+
+    p = jobs_sub.add_parser(
+        "running",
+        help="list running train+deploy jobs (aggregated summary)",
+    )
+    p.add_argument("--biz-type", default="DROS")
+    p.add_argument("--status", default="running", help="status filter (case-insensitive, default running)")
+    p.add_argument("--project-id", default=None)
+    p.add_argument("--current", type=int, default=1)
+    p.add_argument("--page-size", type=int, default=20)
+    p.set_defaults(_handler=_cmd_jobs_running)
 
     p = jobs_sub.add_parser("stop", help="stop a job (dry-run unless --submit)")
     p.add_argument("--job-id", required=True)
