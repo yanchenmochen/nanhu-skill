@@ -566,3 +566,81 @@ def test_main_prints_real_json(capsys: pytest.CaptureFixture[str], fake_client: 
     assert code == 0
     data = json.loads(capsys.readouterr().out)
     assert data == {"ok": True}
+
+
+def test_jobs_list_redacts_password_in_json(
+    capsys: pytest.CaptureFixture[str], fake_client: MagicMock
+) -> None:
+    payload = {
+        "code": 0,
+        "data": {
+            "result": [
+                {
+                    "name": "demo",
+                    "uuid": "jb-1",
+                    "status": "running",
+                    "loginInfo": {"sshPwd": "PlainSecret", "host": "10.0.0.1"},
+                }
+            ]
+        },
+    }
+    with (
+        patch.object(cli, "_build_client", return_value=fake_client),
+        patch.object(cli.jobs_api, "list_jobs", return_value=payload),
+    ):
+        code = cli.main(
+            ["--format", "json", "jobs", "list", "--job-type", "AI_TRAIN"]
+        )
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "PlainSecret" not in out
+    data = json.loads(out)
+    assert data["data"]["result"][0]["loginInfo"]["sshPwd"] == "***"
+    assert data["data"]["result"][0]["loginInfo"]["host"] == "10.0.0.1"
+    # Full JSON retained (not projected-only)
+    assert "loginInfo" in data["data"]["result"][0]
+
+
+def test_jobs_list_format_table(
+    capsys: pytest.CaptureFixture[str], fake_client: MagicMock
+) -> None:
+    payload = {
+        "code": 0,
+        "data": {
+            "result": [
+                {
+                    "name": "demo",
+                    "uuid": "jb-1",
+                    "status": "running",
+                    "jobDuration": "2h",
+                    "createDate": 1_705_248_000_000,
+                    "computeSpecName": "GPU-A",
+                    "workerNum": 4,
+                    "startCmd": "should-not-appear",
+                    "loginInfo": {"sshPwd": "secret"},
+                }
+            ]
+        },
+    }
+    with (
+        patch.object(cli, "_build_client", return_value=fake_client),
+        patch.object(cli.jobs_api, "list_jobs", return_value=payload),
+    ):
+        code = cli.main(
+            ["--format", "table", "jobs", "list", "--job-type", "AI_TRAIN"]
+        )
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "demo" in out
+    assert "jb-1" in out
+    assert "running" in out
+    assert "GPU-A" in out
+    assert "should-not-appear" not in out
+    assert "secret" not in out
+    assert out.strip().startswith("name")
+
+
+def test_format_flag_on_parser() -> None:
+    parser = cli.build_parser()
+    args = parser.parse_args(["--format", "table", "jobs", "list", "--job-type", "AI_TRAIN"])
+    assert args.output_format == "table"

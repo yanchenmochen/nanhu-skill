@@ -1,7 +1,8 @@
 """Unified ``nanhu`` CLI: argparse subcommands over Wave1 API modules.
 
 Write operations default to dry-run; pass ``--submit`` to call the API.
-All successful command results are printed as JSON on stdout.
+Stdout is JSON by default (passwords redacted); ``--format table`` prints a
+projected list table when the response looks like a list.
 """
 
 from __future__ import annotations
@@ -22,6 +23,12 @@ from nanhu.api import resources as resources_api
 from nanhu.api import seahold as seahold_api
 from nanhu.client import NanhuClient
 from nanhu.config import ConfigError
+from nanhu.formatters import (
+    format_table,
+    project_list_payload,
+    redact_secrets,
+    should_use_table,
+)
 
 CLUSTERS = ("wuxi", "x10000")
 DEFAULT_CLUSTER = "wuxi"
@@ -31,6 +38,17 @@ def _print_json(payload: Any) -> None:
     """Emit JSON for agent/script consumption (UTF-8, no ASCII escape)."""
     sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
     sys.stdout.write("\n")
+
+
+def _emit(payload: Any, args: argparse.Namespace) -> None:
+    """Print command result honoring ``--format`` (secrets always redacted)."""
+    redacted = redact_secrets(payload)
+    fmt = getattr(args, "output_format", None) or getattr(args, "format", "json") or "json"
+    if should_use_table(redacted, fmt):
+        rows = project_list_payload(redacted) or []
+        sys.stdout.write(format_table(rows))
+        return
+    _print_json(redacted)
 
 
 def _parse_bool(value: str) -> bool:
@@ -483,6 +501,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_CLUSTER,
         help=f"target cluster (default: {DEFAULT_CLUSTER})",
     )
+    parser.add_argument(
+        "--format",
+        dest="output_format",
+        choices=("table", "json"),
+        default="json",
+        help="output format: json (full, default) or table (projected list columns)",
+    )
     _add_client_flags(parser)
 
     sub = parser.add_subparsers(dest="group", required=True)
@@ -810,10 +835,10 @@ def main(argv: list[str] | None = None) -> int:
         client = _build_client(args)
         result = handler(client, args)
     except (ConfigError, ValueError, RuntimeError, FileNotFoundError, OSError) as exc:
-        _print_json({"error": str(exc), "type": type(exc).__name__})
+        _emit({"error": str(exc), "type": type(exc).__name__}, args)
         return 1
 
-    _print_json(result)
+    _emit(result, args)
     return 0
 
 
