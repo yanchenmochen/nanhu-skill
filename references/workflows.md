@@ -1,15 +1,16 @@
 # 常见工作流
 
-`nanhu` 与 `nanhu-cli` 命令等价，下文统一写 `nanhu`。
+`nanhu` 与 `nanhu-cli` 命令等价，下文统一写 `nanhu`。对人展示列表时加 `--format table`。
 
 ## A. 查作业状态
 
 ```bash
-nanhu --cluster wuxi jobs list --job-type AI_TRAIN --status Running
+nanhu --cluster wuxi --format table jobs running
+nanhu --cluster wuxi --format table jobs list --job-type AI_TRAIN --status running
 nanhu --cluster wuxi jobs detail --job-id <jobId>
 ```
 
-从 JSON 的 `data` 取 `uuid` / `jobId` / `status`。
+`--status` 使用小写（`running` / `error` 等）；CLI 会把 `Running` 规范成 `running`。
 
 ## B. 创建训练作业（推荐闭环）
 
@@ -39,17 +40,20 @@ nanhu --cluster wuxi jobs create-train --config job.yaml --submit
 
 5. 从响应取 `jobId`，再查详情 / POD / 日志。
 
-## C. 查 POD → 日志
+## C. 查 POD → 日志（含本地降级）
 
 ```bash
 nanhu --cluster x10000 pods list --job-id <id> --version v3
-# 取出 podName 后：
 nanhu --cluster x10000 logs get --job-id <id> --pod-names <podName>
 nanhu --cluster x10000 logs prefetch --job-id <id> --pod-names <podName> --step 10
 nanhu --cluster x10000 logs download --job-id <id> --pod-names <podName> -o /tmp/out.log
 ```
 
-无锡集群查日志（`logs get`）时补 `--zone`。`logs prefetch` 不要求 zone。
+无锡集群 `logs get` 需补 `--zone`。若平台日志 404 / 无 zone / 失败：
+
+1. `nanhu jobs detail --job-id <id>`，从 `envVars` 取 `OUTPUT_DIR`（或同等输出目录）。
+2. 读本地 **`$OUTPUT_DIR/run.log`** 尾部判断训练是否正常（比空转试 zone 更高效）。
+3. `logs prefetch` 不要求 zone，可作辅助。
 
 ## D. 停止 / 重启
 
@@ -76,14 +80,13 @@ nanhu --cluster wuxi jobs restart-pod --job-id <id> --pod-names a,b --submit
 ## E. 开发环境
 
 ```bash
-# 编辑 examples/devenv.yaml 后
 nanhu --cluster wuxi devenv create --config examples/devenv.yaml
 nanhu --cluster wuxi devenv create --config examples/devenv.yaml --submit
-nanhu --cluster wuxi devenv list
+nanhu --cluster wuxi --format table devenv list
 nanhu --cluster wuxi devenv save-image --job-id <id> --repository my/repo --tag v1 --submit
 ```
 
-变配重启：YAML 含完整创建字段 + `uuid`（或 CLI `--uuid`）。
+变配重启：YAML 含完整创建字段 + `uuid`（或 CLI `--uuid`）。wuxi 上 `devenv list` 可能 404（见 pitfalls）。
 
 ## F. 算法 / 镜像写操作与共享
 
@@ -109,5 +112,6 @@ nanhu --cluster x10000 seahold destroy --uuid <uuid> --ak <ak> --sk <sk> --submi
 
 - 默认集群不明确时，先问用户 `wuxi` 还是 `x10000`。
 - 任何 `--submit` 前必须展示 dry-run JSON 并得到确认。
+- 列表对人回复用 markdown 表；无数据写「无」；成功只回关键字段。
 - 不要把 `credentials.env`、token、密码、海纳 AK/SK 写入仓库或聊天记录的可持久化附件。
 - WebSocket 实时日志不在本 Skill 范围内。

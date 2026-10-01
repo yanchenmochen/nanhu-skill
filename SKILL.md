@@ -8,119 +8,78 @@ description: >-
 
 # 南湖调度助手（nanhu-skill / nanhu-cli）
 
-用 **`nanhu` 或 `nanhu-cli` CLI**（二者等价）调用南湖 OpenAPI。写操作默认 dry-run；加 `--submit` 才真正执行。
-stdout 为 JSON，便于解析。
+用 **`nanhu` 或 `nanhu-cli`**（等价）调南湖 OpenAPI。写操作默认 dry-run；加 `--submit` 才执行。
+默认 stdout 为**紧凑 JSON**（密码已脱敏）；对人展示列表时加 `--format table`。
 
 ## 何时使用
 
-- 查/建/停/重启训练或部署作业（含变配重启、失败 POD 重启）
-- 开发环境 CRUD、保存镜像
-- 查 POD、资源监控、任务日志（含时间窗口预统计）
-- 查计算规格、项目/子项目、弹性填充价格、算法、镜像（创建作业前置）
-- 算法写操作与共享、镜像共享人、海纳私有数据集 PVC
-
-不要用本 skill 处理 WebSocket 实时日志、非 wuxi/x10000 集群。部分接口在 wuxi 上可能 404（见 `references/pitfalls.md`）。
+- 查/建/停/重启训练或部署（含变配、失败 POD 重启）
+- 开发环境、POD/监控、日志、规格/项目、算法/镜像、海纳 PVC
+- 不要处理 WebSocket 实时日志、非 wuxi/x10000 集群
 
 ## 前置条件
 
 ```bash
-cd /path/to/nanhu-skill
-pip install -e .
-cp config/credentials.env.example config/credentials.env
-# 填入 NANHU_APP_KEY / NANHU_APP_SECRET / NANHU_USER_ID
-# 可选按集群：config/credentials.wuxi.env / credentials.x10000.env
-```
-
-Cursor Skill 安装（symlink 双入口，指向同一仓库）：
-
-```bash
+cd /path/to/nanhu-skill && pip install -e .
+cp config/credentials.env.example config/credentials.env   # 填 KEY/SECRET/USER_ID
 mkdir -p ~/.cursor/skills
 ln -sfn /path/to/nanhu-skill ~/.cursor/skills/nanhu-skill
 ln -sfn /path/to/nanhu-skill ~/.cursor/skills/nanhu-cli
 ```
 
-`/nanhu-skill` 与 `/nanhu-cli` 加载同一份本文件。
+全局常用：`--cluster {wuxi,x10000}`（默认 wuxi）、`--format table|json`、`--pretty`、`--submit`。
+Token 默认缓存 `~/.cache/nanhu/token.json`（`NANHU_TOKEN_CACHE=0` 可关闭）。
 
-## 全局参数
-
-| 参数 | 说明 |
-|------|------|
-| `--cluster {wuxi,x10000}` | 目标集群（默认 `wuxi`） |
-| `--credentials PATH` | 凭据文件覆盖 |
-| `--submit` | 写操作真正调用 API（默认 dry-run） |
-
-凭据也可经环境变量：`NANHU_APP_KEY` / `NANHU_APP_SECRET` / `NANHU_USER_ID`（`NANHU_API_BASE` 可选覆盖 endpoint）。
-
-## 命令速查
+## 高频配方（优先用这些，勿再套 python -c 做表）
 
 ```bash
-# 作业（nanhu / nanhu-cli 等价）
-nanhu --cluster wuxi jobs list --job-type AI_TRAIN
+# 运行中作业（训练+部署一次拉齐）
+nanhu --cluster wuxi --format table jobs running
+
+# 仅训练 / 仅部署 running
+nanhu --cluster wuxi --format table jobs list --job-type AI_TRAIN --status running
+nanhu --cluster wuxi --format table jobs list --job-type AI_ONLINE_INFERENCE_SERVICE --status running
+
+# 详情 / 停作业
 nanhu --cluster wuxi jobs detail --job-id <id>
-nanhu --cluster wuxi jobs list-all
-nanhu --cluster wuxi jobs stop --job-id <id>              # dry-run
+nanhu --cluster wuxi jobs stop --job-id <id>            # dry-run
 nanhu --cluster wuxi jobs stop --job-id <id> --submit
-nanhu --cluster wuxi jobs restart --job-id <id> --submit
-nanhu --cluster wuxi jobs restart-deploy --config deploy.yaml   # 变配，dry-run
-nanhu --cluster wuxi jobs restart-pod --job-id <id> --pod-names a,b --submit
-nanhu --cluster wuxi jobs create-train --config examples/train_job.yaml
-nanhu --cluster wuxi jobs create-train --config job.yaml --submit
-nanhu --cluster wuxi jobs create-deploy --config deploy.yaml --version v3
 
-# 开发环境
-nanhu --cluster wuxi devenv list
-nanhu --cluster wuxi devenv detail --job-id <id>
-nanhu --cluster wuxi devenv create --config examples/devenv.yaml
-nanhu --cluster wuxi devenv restart --config devenv.yaml --uuid <uuid> --submit
-nanhu --cluster wuxi devenv save-image --job-id <id> --repository repo/a --tag v1 --submit
-
-# POD / 监控
-nanhu --cluster wuxi pods list --job-id <id> --version v3
-nanhu --cluster wuxi pods list --job-id <id> --version v2
-nanhu --cluster wuxi pods monitor --job-id <id>
-nanhu --cluster wuxi pods monitor --job-id <id> --pod-names p0 --start <ts> --end <ts>
-
-# 日志（x10000 可自动映射 zone；无锡请显式 --zone）
+# POD → 日志（x10000 可自动 zone；wuxi 需 --zone 或走本地降级）
+nanhu --cluster x10000 pods list --job-id <id>
 nanhu --cluster x10000 logs get --job-id <id> --pod-names <pod>
-nanhu --cluster wuxi logs get --job-id <id> --pod-names <pod> --zone <ZONE>
-nanhu --cluster wuxi logs download --job-id <id> --pod-names <pod> -o /tmp/job.log
-nanhu --cluster wuxi logs prefetch --job-id <id> --pod-names <pod>
 
-# 资源 / 算法 / 镜像
-nanhu --cluster wuxi resources specs
-nanhu --cluster wuxi resources projects
-nanhu --cluster wuxi resources sub-projects --project-id <id>
-nanhu --cluster wuxi resources promotions --project-id <id>
-nanhu --cluster wuxi algorithms list --is-public false
-nanhu --cluster wuxi algorithms get --uuid <uuid> --is-public false
-nanhu --cluster wuxi algorithms create --config algo.yaml
-nanhu --cluster wuxi algorithms update --config algo.yaml
-nanhu --cluster wuxi algorithms delete --uuid <uuid>
-nanhu --cluster wuxi algorithms publish --uuid <uuid>
-nanhu --cluster wuxi algorithms unpublish --uuid <uuid>
-nanhu --cluster wuxi algorithms share --uuid <uuid> --user-name <u>
-nanhu --cluster wuxi algorithms unshare --uuid <uuid> --user-name <u>
-nanhu --cluster wuxi images list --is-public false
-nanhu --cluster wuxi images tags --repository-name <name> --source <source>
-nanhu --cluster wuxi images share --uuid <id> --source <s> --user-name <u>
-nanhu --cluster wuxi images unshare --uuid <id> --source <s> --user-name <u>
-
-# 海纳数据集 PVC（写操作默认 dry-run）
-nanhu --cluster wuxi seahold list
-nanhu --cluster wuxi seahold create --config seahold.yaml
-nanhu --cluster wuxi seahold destroy --uuid <uuid>
+# 创建训练
+nanhu --cluster wuxi jobs create-train --config job.yaml
+nanhu --cluster wuxi jobs create-train --config job.yaml --submit
 ```
 
-## Agent 工作流（推荐）
+完整命令表见 `references/api-map.md`；端到端流程见 `references/workflows.md`。
 
-1. **读操作**：直接跑 CLI，解析 stdout JSON。
-2. **写操作**：先不加 `--submit`，把 dry-run 的 `path`/`query`/`body` 展示给用户确认；确认后再加 `--submit`。
-3. **创建训练**：先用 `resources` / `algorithms` / `images` 拿到真实 UUID，再填 YAML（参考 `examples/train_job.yaml`）。
-4. **查日志**：先 `pods list` 拿 `podName`，再 `logs get`。
-5. **失败**：若 stdout 含 `"error"`，检查凭据、集群、zone、作业名规则（见 `references/pitfalls.md`）。
+## 对人回复模板（必须遵守）
+
+**列表类：** 用 markdown 表，列优先 `状态 | 名称 | jobId | 时长 | 规格 | 创建时间`。无数据时明确写「当前无 …」。不要把整页 JSON 贴给用户。
+
+```markdown
+### 无锡 · 运行中作业（N）
+| # | 状态 | 名称 | jobId | 时长 | 规格 |
+|---|------|------|-------|------|------|
+| 1 | running | ... | jb-... | ... | ... |
+```
+
+**写操作类：** 先展示 dry-run 摘要（method / path / 关键字段），用户确认后再 `--submit`。成功只回 `jobId` / `status` 等关键字段。
+
+**排障类：** 平台 `logs get` 失败时，从 `jobs detail` 的 env（如 `OUTPUT_DIR`）读取本地 `OUTPUT_DIR/run.log` 尾部，不要空转试 zone。
+
+## Agent 约定
+
+1. 读操作直接跑 CLI；列表对人用 `--format table`。
+2. 写操作必须先 dry-run 确认再 `--submit`。
+3. `--status` 用小写（`running`）；CLI 会规范化大小写。
+4. 失败若含 `hint`，优先按 hint 行动（见 `references/pitfalls.md`）。
 
 ## 详细参考
 
-- API 路径与 CLI 映射：`references/api-map.md`
-- 端到端流程：`references/workflows.md`
+- API / CLI 映射：`references/api-map.md`
+- 工作流（含日志降级）：`references/workflows.md`
 - 常见坑：`references/pitfalls.md`

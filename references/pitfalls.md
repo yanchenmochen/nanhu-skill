@@ -45,11 +45,13 @@ Agent 切勿把 dry-run 当成“已创建成功”。
 
 平台响应 `code` 可能是 `0` / `"0"` / `200` / `"200"`。判断成功时不要只认其中一个。
 
-## 6. 日志 `zone` header
+## 6. 日志 `zone` 与本地 `run.log` 降级
 
 `logs get` 必填 `zone`。`x10000` 集群会映射为 `X10000`；`wuxi` 当前无内置映射，必须显式 `--zone`。
 
 `logs prefetch`（时间窗口统计）**不要求** zone。
+
+**平台日志不可用时（wuxi 常见）：** 从 `jobs detail` 取 `OUTPUT_DIR`（envVars），读本地 **`$OUTPUT_DIR/run.log`** 尾部判断训练是否正常，不要反复盲试 zone。
 
 ## 7. `isPublic` 用小写
 
@@ -59,7 +61,9 @@ Agent 切勿把 dry-run 当成“已创建成功”。
 
 - 只放 `config/credentials.env`（已 gitignore）或环境变量。
 - 可按集群拆分 `credentials.wuxi.env` / `credentials.x10000.env`。
+- Token 默认落盘 `~/.cache/nanhu/token.json`（可用 `NANHU_TOKEN_CACHE=0` 关闭）。
 - **永远不要** commit 真实凭据、token 缓存或海纳 AK/SK。
+- CLI 输出会脱敏 `sshPwd` / `jupyterPwd` 等；仍勿把明文密码贴进聊天附件。
 
 ## 9. V2 / V3 创建差异
 
@@ -71,7 +75,8 @@ Agent 切勿把 dry-run 当成“已创建成功”。
 无锡（wuxi）上部分接口常 **404** 或失败，例如：`dev-env/list`、`images`、`jobListAll`、日志 `zone` 映射。
 新接口（`pre_fetch`、`promotion/list`、算法写、镜像共享、海纳 PVC 等）同样可能仅在 x10000 / 文档集群可用。
 
-CLI 失败时返回结构化 JSON（含 `error` / `type`）；Skill 不要假装无锡已支持全部 OpenAPI。
+CLI 失败时返回结构化 JSON（含 `error` / `type`，已知缺口会带 `hint`）；Skill 不要假装无锡已支持全部 OpenAPI。
+查 running 作业请优先 `jobs running` 或 `jobs list --job-type ...`，不要依赖 wuxi 上的 `jobListAll`。
 
 ## 11. WebSocket 实时日志不做
 
@@ -80,3 +85,7 @@ Apifox 中的 WebSocket 日志订阅与 REST 不同，本仓库明确 **不实�
 ## 12. 海纳 PVC 销毁时机
 
 失败开发环境 POD 可能保留现场约 7×24 小时；销毁私有数据集 PVC 建议在开发环境结束后至少 7 天（见平台文档）。
+
+## 13. `--status` 大小写
+
+平台筛选多为小写（`running`）。CLI 已规范化；文档与 Skill 示例统一写小写，避免写成 `Running` 却仍依赖服务端大小写敏感行为。
