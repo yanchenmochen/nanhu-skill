@@ -10,7 +10,14 @@ from unittest.mock import patch
 
 import pytest
 
-from nanhu.auth import TokenCache, TokenInfo, fetch_access_token, get_access_token
+from nanhu.auth import (
+    DEFAULT_TOKEN_CACHE_PATH,
+    TokenCache,
+    TokenInfo,
+    fetch_access_token,
+    get_access_token,
+    resolve_token_cache_path,
+)
 from nanhu.client import NanhuClient
 from nanhu.config import ClusterConfig, Credentials, NanhuSettings
 from nanhu.http import HttpResponse
@@ -143,3 +150,59 @@ def test_client_build_url() -> None:
     client = NanhuClient("http://10.1.1.1:38080/", user_id="u", app_key="k", app_secret="s")
     assert client.build_url("/api/x") == "http://10.1.1.1:38080/api/x"
     assert "userId=u" in client.build_url("api/x", query={"userId": "u", "skip": None})
+
+
+def test_resolve_token_cache_path_default() -> None:
+    assert resolve_token_cache_path(env={}) == DEFAULT_TOKEN_CACHE_PATH
+
+
+def test_resolve_token_cache_path_disable_env() -> None:
+    assert resolve_token_cache_path(env={"NANHU_TOKEN_CACHE": "0"}) is None
+    assert resolve_token_cache_path(env={"NANHU_TOKEN_CACHE": "false"}) is None
+    assert resolve_token_cache_path(env={"NANHU_TOKEN_CACHE_DISABLE": "1"}) is None
+
+
+def test_resolve_token_cache_path_custom(tmp_path: Path) -> None:
+    custom = tmp_path / "tok.json"
+    assert resolve_token_cache_path(env={"NANHU_TOKEN_CACHE": str(custom)}) == custom
+    assert (
+        resolve_token_cache_path(env={"NANHU_TOKEN_CACHE_PATH": str(custom)}) == custom
+    )
+
+
+def test_token_cache_defaults_to_resolved_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("NANHU_TOKEN_CACHE_DISABLE", raising=False)
+    path = tmp_path / "token.json"
+    monkeypatch.setenv("NANHU_TOKEN_CACHE", str(path))
+    cache = TokenCache()
+    assert cache.cache_path == path
+    cache.put("http://10.1.1.1", "k", "env-tok")
+    assert path.is_file()
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert any(v.get("access_token") == "env-tok" for v in data.values())
+
+
+def test_token_cache_explicit_none_is_memory_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("NANHU_TOKEN_CACHE_DISABLE", raising=False)
+    monkeypatch.setenv("NANHU_TOKEN_CACHE", str(tmp_path / "should-not-write.json"))
+    cache = TokenCache(cache_path=None)
+    cache.put("http://10.1.1.1", "k", "mem-only")
+    assert not (tmp_path / "should-not-write.json").exists()
+
+
+def test_client_from_settings_uses_default_file_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("NANHU_TOKEN_CACHE_DISABLE", raising=False)
+    path = tmp_path / "cli-token.json"
+    monkeypatch.setenv("NANHU_TOKEN_CACHE", str(path))
+    settings = NanhuSettings(
+        cluster=ClusterConfig(name="wuxi", api_base="http://10.124.120.108:38080"),
+        credentials=Credentials(app_key="k", app_secret="s", user_id="u"),
+    )
+    client = NanhuClient.from_settings(settings)
+    assert client.token_cache.cache_path == path

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-from nanhu.auth import TokenCache, get_access_token
+from nanhu.auth import TokenCache, get_access_token, resolve_token_cache_path
 from nanhu.config import Credentials, NanhuSettings, load_settings
 from nanhu.http import request_json
 
@@ -32,6 +32,7 @@ class NanhuClient:
         self.user_id = str(user_id)
         self.app_key = app_key
         self.app_secret = app_secret
+        # Default TokenCache enables ~/.cache/nanhu/token.json unless disabled.
         self.token_cache = token_cache or TokenCache()
         self.default_headers = dict(default_headers or {})
         self._access_token: str | None = None
@@ -44,7 +45,12 @@ class NanhuClient:
         token_cache: TokenCache | None = None,
         cache_path: Path | None = None,
     ) -> "NanhuClient":
-        cache = token_cache or TokenCache(cache_path=cache_path)
+        if token_cache is not None:
+            cache = token_cache
+        elif cache_path is not None:
+            cache = TokenCache(cache_path=cache_path)
+        else:
+            cache = TokenCache(cache_path=resolve_token_cache_path())
         return cls(
             settings.api_base,
             user_id=settings.user_id,

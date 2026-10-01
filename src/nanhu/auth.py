@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from dataclasses import dataclass
@@ -14,8 +15,48 @@ from nanhu.http import HttpError, http_json, parse_api_payload
 # Platform tokens are typically valid for about two hours; refresh a bit early.
 DEFAULT_TTL_SECONDS = 2 * 60 * 60
 DEFAULT_SKEW_SECONDS = 5 * 60
+DEFAULT_TOKEN_CACHE_PATH = Path.home() / ".cache" / "nanhu" / "token.json"
+
+# Env overrides:
+# - NANHU_TOKEN_CACHE / NANHU_TOKEN_CACHE_PATH: custom file path
+# - NANHU_TOKEN_CACHE=0|false|off|disable|disabled|none|"" (empty with explicit disable
+#   via NANHU_TOKEN_CACHE_DISABLE=1 also works): disable file persistence
+_DISABLE_VALUES = frozenset({"0", "false", "off", "no", "disable", "disabled", "none", ""})
 
 HttpJsonFn = Callable[..., Any]
+
+
+def resolve_token_cache_path(
+    *,
+    explicit: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> Path | None:
+    """Resolve default token cache path with env overrides.
+
+    Returns ``None`` when file cache is disabled.
+    Priority: ``explicit`` → ``NANHU_TOKEN_CACHE`` / ``NANHU_TOKEN_CACHE_PATH``
+    → default ``~/.cache/nanhu/token.json``.
+    """
+    if explicit is not None:
+        return explicit
+    environ = env if env is not None else os.environ
+    if str(environ.get("NANHU_TOKEN_CACHE_DISABLE", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return None
+    raw = environ.get("NANHU_TOKEN_CACHE")
+    if raw is None:
+        raw = environ.get("NANHU_TOKEN_CACHE_PATH")
+    if raw is not None:
+        value = str(raw).strip()
+        if value.lower() in _DISABLE_VALUES:
+            return None
+        return Path(value).expanduser()
+    return DEFAULT_TOKEN_CACHE_PATH
+
 
 
 @dataclass
@@ -31,21 +72,29 @@ class TokenInfo:
 
 
 class TokenCache:
-    """In-memory token cache with optional JSON file persistence."""
+    """In-memory token cache with optional JSON file persistence.
+
+    When ``cache_path`` is omitted, resolves via ``resolve_token_cache_path()``
+    (default ``~/.cache/nanhu/token.json`` unless disabled by env).
+    """
 
     def __init__(
         self,
         *,
-        cache_path: Path | None = None,
+        cache_path: Path | None | object = ...,
         ttl_seconds: float = DEFAULT_TTL_SECONDS,
         skew_seconds: float = DEFAULT_SKEW_SECONDS,
     ) -> None:
-        self.cache_path = cache_path
+        if cache_path is ...:
+            resolved: Path | None = resolve_token_cache_path()
+        else:
+            resolved = cache_path  # type: ignore[assignment]
+        self.cache_path = resolved
         self.ttl_seconds = ttl_seconds
         self.skew_seconds = skew_seconds
         self._lock = threading.Lock()
         self._mem: dict[str, TokenInfo] = {}
-        if cache_path is not None:
+        if self.cache_path is not None:
             self._load_file()
 
     def _key(self, api_base: str, app_key: str) -> str:
