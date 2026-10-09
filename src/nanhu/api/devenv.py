@@ -260,12 +260,14 @@ def _map_resource(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _map_storage(raw: dict[str, Any]) -> dict[str, Any]:
+    from nanhu.api.jobs import _normalize_bucket_path
+
     out: dict[str, Any] = {
         "uuid": _pick(raw, "uuid"),
         "ossName": _pick(raw, "ossName", "oss_name"),
         "bucket": _pick(raw, "bucket"),
     }
-    path = _pick(raw, "path")
+    path = _normalize_bucket_path(_pick(raw, "path"))
     if path is not None:
         out["path"] = path
     output_path = _pick(raw, "outputPath", "output_path")

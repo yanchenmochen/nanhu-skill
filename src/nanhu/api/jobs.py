@@ -46,6 +46,31 @@ def normalize_status(status: str | None) -> str | None:
     return text.lower()
 
 
+def _normalize_bucket_path(value: Any) -> str | None:
+    """Normalize an OSS bucket-internal ``path`` for mountedStorages / outputDir.
+
+    Returns ``None`` when the value is missing, blank, ``"/"``, or otherwise
+    indicates "mount the whole bucket". The OpenAPI spec states ``path`` is
+    optional; when omitted, the platform mounts the entire bucket and renders
+    a clean "存储路径 / 存储挂载路径" pair in the console. Sending ``"/"`` makes
+    the UI concatenate it as ``ossName/bucket//`` and displays ``挂载路径: /``,
+    which looks broken even though the mount itself works.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        # Avoid True/False being treated as 1/0 by str(); bool is not a path.
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    # Strip trailing slashes so "/" and "/foo/" both signal "root".
+    text = text.rstrip("/")
+    if not text:
+        return None
+    return text
+
+
 def _drop_none(d: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in d.items() if v is not None}
 
@@ -155,8 +180,11 @@ def build_train_payload(
             "ossName": m.get("oss_name") or m.get("ossName"),
             "bucket": m["bucket"],
         }
-        if m.get("path") is not None:
-            item["path"] = m["path"]
+        bucket_path = _normalize_bucket_path(
+            m.get("path") if m.get("path") is not None else m.get("bucket_path")
+        )
+        if bucket_path is not None:
+            item["path"] = bucket_path
         out_path = m.get("output_path", m.get("outputPath"))
         if out_path is not None:
             item["outputPath"] = out_path
@@ -166,8 +194,11 @@ def build_train_payload(
     output_dir: dict[str, Any] | None = None
     if out:
         output_dir = {"uuid": out["uuid"], "bucket": out["bucket"]}
-        if out.get("path") is not None:
-            output_dir["path"] = out["path"]
+        bucket_path = _normalize_bucket_path(
+            out.get("path") if out.get("path") is not None else out.get("bucket_path")
+        )
+        if bucket_path is not None:
+            output_dir["path"] = bucket_path
         op = out.get("output_path", out.get("outputPath"))
         if op is not None:
             output_dir["outputPath"] = op
@@ -302,8 +333,11 @@ def build_deploy_payload(
             "ossName": m.get("oss_name") or m.get("ossName"),
             "bucket": m["bucket"],
         }
-        if m.get("path") is not None:
-            item["path"] = m["path"]
+        bucket_path = _normalize_bucket_path(
+            m.get("path") if m.get("path") is not None else m.get("bucket_path")
+        )
+        if bucket_path is not None:
+            item["path"] = bucket_path
         out_path = m.get("output_path", m.get("outputPath"))
         if out_path is not None:
             item["outputPath"] = out_path
@@ -368,11 +402,13 @@ def build_deploy_payload(
 
     model = cfg.get("model_dir") or cfg.get("modelDir")
     if model:
+        model_path = _normalize_bucket_path(model.get("path"))
         body["modelDir"] = {
             "uuid": model["uuid"],
             "bucket": model["bucket"],
-            "path": model["path"],
         }
+        if model_path is not None:
+            body["modelDir"]["path"] = model_path
 
     if mounted:
         body["mountedStorages"] = mounted

@@ -89,3 +89,26 @@ Apifox 中的 WebSocket 日志订阅与 REST 不同，本仓库明确 **不实�
 ## 13. `--status` 大小写
 
 平台筛选多为小写（`running`）。CLI 已规范化；文档与 Skill 示例统一写小写，避免写成 `Running` 却仍依赖服务端大小写敏感行为。
+
+## 14. 存储挂载 `path` 不要填 `/`
+
+`mountedStorages[].path` 选填：填了表示「OSS 内的子文件夹」，**不填表示挂整 bucket**。
+旧示例常写 `path: /`，平台 UI 会把存储路径渲染成 `ossName/bucket//` 并把「存储挂载路径」列显示成 `/`，看起来像挂错了，实际挂载是对的。
+
+正确做法（友好 YAML / API 字段名一致）：
+
+```yaml
+mounted_storages:
+  - uuid: <oss-uuid>
+    oss_name: zj-data
+    bucket: data
+    # 留空（或注释掉）表示挂整 bucket；不要写 path: /
+    output_path: /mnt/zj-data/data
+  - uuid: <oss-uuid>
+    oss_name: zj-data
+    bucket: models
+    output_path: /mnt/zj-data/models
+```
+
+CLI 在 `build_train_payload` / `build_deploy_payload` 里会主动把 `"/"` / `""` / `null` 归一化为「不发送 `path` 字段」，从而让 UI 显示成你期望的 `/mnt/zj-data/data`、`/mnt/zj-data/models`。子文件夹（`/foo/bar/`）会保留路径但去掉尾部斜杠。
+

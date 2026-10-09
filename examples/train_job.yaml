@@ -27,7 +27,10 @@ mounted_storages:
   - uuid: 00000000-0000-0000-0000-000000000003
     oss_name: zj-data
     bucket: data
-    path: /
+    # Omit `path` (or set to null / "") to mount the whole bucket.
+    # Sending `path: /` makes the platform UI render the storage row as
+    # `zj-data/data//` and a confusing `挂载路径: /`, so the helper below
+    # strips trailing slashes and drops the field entirely when it equals "/".
     output_path: /mnt/data
 
 output_dir:

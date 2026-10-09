@@ -1,0 +1,68 @@
+biz_type: DROS
+job_type: AI_TRAIN
+name: slime-021-32b-agentic-6r2t-steps1-sg16g8
+algorithm:
+  uuid: 4c61fd31-0ff6-49bf-bd78-baf1493e536a
+  name: songquanheng-slime
+  mount_path: /mnt/zj-data/data/songquanheng/slime
+start_cmd: bash /mnt/zj-data/data/songquanheng/slime/musa_run/nanhu_training_job/run_nanhu_training_job_agentic_swe.sh
+run_type: ''
+resource:
+  project_uuid: project_1783505077558
+  sub_mission_name: 强化学习
+  compute_spec_uuid: ab084211-561d-4347-82be-316cbbce1d1b
+  compute_spec_name: GPU-8
+  worker_num: 8
+mounted_storages:
+- uuid: 77e436f5-70ca-44e4-8258-584189981b0e
+  oss_name: zj-data
+  bucket: data
+  output_path: /mnt/zj-data/data
+- uuid: 77e436f5-70ca-44e4-8258-584189981b0e
+  oss_name: zj-data
+  bucket: models
+  output_path: /mnt/zj-data/models
+- uuid: 77e436f5-70ca-44e4-8258-584189981b0e
+  oss_name: zj-data
+  bucket: datasets
+  output_path: /mnt/zj-data/datasets
+output_dir:
+  uuid: 77e436f5-70ca-44e4-8258-584189981b0e
+  bucket: data
+  path: songquanheng/output/slime/021-32b-agentic-6r2t-modify-prompt-data-settings-tp_size4-steps1-sg16g8
+  output_path: /mnt/zj-data/data/songquanheng/output/slime/021-32b-agentic-6r2t-modify-prompt-data-settings-tp_size4-steps1-sg16g8
+env_vars:
+  PYTHONUNBUFFERED: '1'
+  TRAINING_SCRIPT: run_021_32b_agentic_openhands_scale_swe.sh
+  ALIGNMENT_MODE: none
+  EXP_TAG: 021_32b_agentic_scale_swe_1024_6r2t
+  ROLLOUT_TP_SIZE: '4'
+  SGLANG_SERVER_CONCURRENCY: '16'
+  SWE_BOOT_CONCURRENCY: '16'
+  PROMPT_DATA: /mnt/zj-data/data/songquanheng/data/Scale-SWE/scale-swe-random1024-slime.jsonl
+  EXPECTED_PROMPT_ROWS: '1024'
+  DEBUG_ROLLOUT_ONLY: '0'
+  NUM_ROLLOUT: '64'
+  ROLLOUT_BATCH_SIZE: '16'
+  N_SAMPLES_PER_PROMPT: '8'
+  SGLANG_REASONING_PARSER: deepseek-r1
+  SGLANG_TOOL_CALL_PARSER: glm47
+  SGLANG_ENABLE_DETERMINISTIC_INFERENCE: '1'
+  SEED: '1234'
+  ROLLOUT_NUM_GPUS: '48'
+  SLIME_AGENT_OPENHANDS_TOOLS: opensandbox_terminal,finish,think
+  SGLANG_ENABLE_NAN_DETECTION: '1'
+  OUTPUT_DIR: /mnt/zj-data/data/songquanheng/output/slime/021-32b-agentic-6r2t-modify-prompt-data-settings-tp_size4-steps1-sg16g8
+  SGLANG_PYTHON_ROOT: /mnt/zj-data/data/dongjie/nanhu-sglang
+  ENABLE_EVAL: '0'
+  EVAL_PROMPT_DATA: /mnt/zj-data/data/songquanheng/data/SWE-bench_Verified/swe_bench_verified_osb.jsonl
+  MEGATRON_PATH: /mnt/zj-data/data/dongjie/pretrain/gitee/Megatron-LM
+  ACTOR_NUM_NODES: '2'
+  TP_SIZE: '4'
+  PP_SIZE: '4'
+  EP_SIZE: '1'
+  NUM_STEPS_PER_ROLLOUT: '1'
+  SGLANG_CUDA_GRAPH_MAX_BS: '8'
+  DASHBOARD_PORT: '8265'
+use_tensorboard: false
+auto_restart: false
